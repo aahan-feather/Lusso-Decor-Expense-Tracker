@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1
 FROM node:22-alpine AS builder
 
+# Prisma engines need OpenSSL at build time; Alpine minimal images omit it.
+RUN apk add --no-cache openssl libc6-compat
+
 WORKDIR /app
 
 COPY server/package.json server/package-lock.json ./server/
@@ -19,6 +22,8 @@ RUN cd server && npx prisma generate && npm run build
 RUN cd client && npm run build
 
 FROM node:22-alpine AS runner
+
+RUN apk add --no-cache openssl libc6-compat
 
 WORKDIR /app/server
 ENV NODE_ENV=production
