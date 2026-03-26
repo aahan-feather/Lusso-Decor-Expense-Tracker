@@ -1,7 +1,7 @@
 # Blueprint: https://render.com/docs/blueprint-spec
 services:
   - type: web
-    name: papa-expense-tracker
+    name: lusso-accounts-tracker
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerContext: .

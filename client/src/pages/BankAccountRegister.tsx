@@ -215,13 +215,21 @@ export function BankAccountRegister() {
   const pm = data?.paymentMethod;
   const rows = data?.rows ?? [];
 
+  const rowKey = (row: RegisterRow) => `${row.sourceType}-${row.sourceId}`;
   let running = 0;
-  const rowsWithBalance = rows
-    .map((row) => {
+  const balanceByRowKey = new Map<string, number>();
+  [...rows]
+    .sort((a, b) => a.sortAt.localeCompare(b.sortAt))
+    .forEach((row) => {
       running += row.direction === "in" ? row.amount : -row.amount;
-      return { row, balance: running };
-    })
-    .sort((a, b) => b.row.date.localeCompare(a.row.date));
+      balanceByRowKey.set(rowKey(row), running);
+    });
+  const rowsWithBalance = [...rows]
+    .sort((a, b) => b.sortAt.localeCompare(a.sortAt))
+    .map((row) => ({
+      row,
+      balance: balanceByRowKey.get(rowKey(row)) ?? 0,
+    }));
 
   const tableInput: React.CSSProperties = {
     padding: "0.4rem",
