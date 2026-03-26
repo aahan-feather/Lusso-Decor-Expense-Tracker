@@ -63,9 +63,7 @@ export function ProjectLineItemsDetail() {
         maxHeight: "100%",
       }}
     >
-      {error && (
-        <p style={{ color: "#c00", marginBottom: "1rem" }}>{error}</p>
-      )}
+      {error && <p style={{ color: "#c00", marginBottom: "1rem" }}>{error}</p>}
       <div
         style={{
           display: "flex",
@@ -96,8 +94,12 @@ export function ProjectLineItemsDetail() {
           to={`/projects/${projectId}`}
           style={{
             fontSize: "0.9rem",
-            color: "#1668c0",
+            color: "#fff",
             marginLeft: "auto",
+            background: "#000",
+            padding: "0.4rem 0.75rem",
+            borderRadius: 4,
+            border: "1px solid #ccc",
           }}
         >
           Project details

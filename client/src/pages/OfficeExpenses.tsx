@@ -1,4 +1,14 @@
-import { useEffect, useState } from "react";
+import {
+  useFloating,
+  autoUpdate,
+  offset,
+  flip,
+  shift,
+  size,
+  FloatingPortal,
+} from "@floating-ui/react";
+import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import {
   api,
   type OfficeExpense,
@@ -14,10 +24,240 @@ import {
 } from "../utils/format";
 import { PencilIcon, TrashIcon } from "lucide-react";
 
-const ADD_NEW_TYPE_VALUE = "__add_new_type__";
-
 function dateKey(iso: string): string {
   return iso.slice(0, 10);
+}
+
+type OfficeExpenseTypeComboboxProps = {
+  types: OfficeExpenseType[];
+  selectedId: string;
+  onSelectedIdChange: (id: string) => void;
+  onRequestCreateNew: () => void;
+  placeholder?: string;
+  inputStyle?: CSSProperties;
+  minInputWidth?: number;
+};
+
+function OfficeExpenseTypeCombobox({
+  types,
+  selectedId,
+  onSelectedIdChange,
+  onRequestCreateNew,
+  placeholder = "Type (optional)",
+  inputStyle,
+  minInputWidth = 140,
+}: OfficeExpenseTypeComboboxProps) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const blurCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { refs, floatingStyles } = useFloating({
+    open,
+    placement: "bottom-start",
+    whileElementsMounted: autoUpdate,
+    middleware: [
+      offset(4),
+      flip({ fallbackPlacements: ["top-start"] }),
+      shift({ padding: 8 }),
+      size({
+        apply({ rects, elements }) {
+          Object.assign(elements.floating.style, {
+            width: `${rects.reference.width}px`,
+          });
+        },
+      }),
+    ],
+  });
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const t = types.find((x) => x.id === selectedId);
+    if (t) setQuery(t.name);
+  }, [selectedId, types]);
+
+  useEffect(() => {
+    const onDocMouseDown = (ev: MouseEvent) => {
+      const target = ev.target as Node;
+      const refEl = refs.reference.current;
+      if (
+        refEl &&
+        refEl instanceof HTMLElement &&
+        refEl.contains(target)
+      )
+        return;
+      if (refs.floating.current?.contains(target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, []);
+
+  const q = query.trim().toLowerCase();
+  const filtered = types.filter((t) =>
+    q ? t.name.toLowerCase().includes(q) : true,
+  );
+
+  const pick = (t: OfficeExpenseType) => {
+    onSelectedIdChange(t.id);
+    setQuery(t.name);
+    setOpen(false);
+  };
+
+  const scheduleClose = () => {
+    if (blurCloseTimer.current) clearTimeout(blurCloseTimer.current);
+    blurCloseTimer.current = setTimeout(() => setOpen(false), 150);
+  };
+
+  const cancelClose = () => {
+    if (blurCloseTimer.current) {
+      clearTimeout(blurCloseTimer.current);
+      blurCloseTimer.current = null;
+    }
+  };
+
+  return (
+    <div
+      ref={refs.setReference}
+      style={{
+        position: "relative",
+        flex: 1,
+        minWidth: minInputWidth,
+      }}
+    >
+        <input
+          type="text"
+          autoComplete="off"
+          placeholder={placeholder}
+          value={query}
+          onChange={(e) => {
+            const v = e.target.value;
+            setQuery(v);
+            setOpen(true);
+            const cur = types.find((x) => x.id === selectedId);
+            if (selectedId && cur && v !== cur.name) onSelectedIdChange("");
+            if (!v.trim()) onSelectedIdChange("");
+          }}
+          onFocus={() => {
+            cancelClose();
+            setOpen(true);
+          }}
+          onBlur={() => {
+            scheduleClose();
+            const trimmed = query.trim();
+            if (!trimmed) {
+              onSelectedIdChange("");
+              return;
+            }
+            const cur = selectedId
+              ? types.find((x) => x.id === selectedId)
+              : undefined;
+            if (cur && cur.name.toLowerCase() === trimmed.toLowerCase()) return;
+            const exact = types.find(
+              (t) => t.name.toLowerCase() === trimmed.toLowerCase(),
+            );
+            if (exact) onSelectedIdChange(exact.id);
+            else onSelectedIdChange("");
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              setOpen(false);
+            }
+          }}
+          style={{
+            width: "100%",
+            padding: "0.5rem",
+            border: "1px solid #ccc",
+            borderRadius: 4,
+            boxSizing: "border-box",
+            ...inputStyle,
+          }}
+        />
+        {open && (
+          <FloatingPortal>
+            <ul
+              ref={refs.setFloating}
+              role="listbox"
+              style={{
+                ...floatingStyles,
+                zIndex: 200,
+                padding: 0,
+                margin: 0,
+                listStyle: "none",
+                maxHeight: 220,
+                overflowY: "auto",
+                background: "#fff",
+                border: "1px solid #ccc",
+                borderRadius: 4,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+              }}
+            >
+              {filtered.length === 0 ? (
+                <li
+                  style={{
+                    padding: "0.5rem 0.65rem",
+                    fontSize: "0.85rem",
+                    color: "#666",
+                  }}
+                >
+                  No matching types
+                </li>
+              ) : (
+                filtered.map((t) => (
+                  <li key={t.id}>
+                    <button
+                      type="button"
+                      role="option"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => pick(t)}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "0.45rem 0.65rem",
+                        border: "none",
+                        background: "transparent",
+                        fontSize: "0.875rem",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {t.name}
+                    </button>
+                  </li>
+                ))
+              )}
+              <li
+                style={{
+                  borderTop: "1px solid #eee",
+                }}
+              >
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setOpen(false);
+                    onRequestCreateNew();
+                  }}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "0.45rem 0.65rem",
+                    border: "none",
+                    background: "#f8f8f8",
+                    fontSize: "0.875rem",
+                    cursor: "pointer",
+                    color: "#1a1a1a",
+                  }}
+                >
+                  + Add new type…
+                </button>
+              </li>
+            </ul>
+          </FloatingPortal>
+        )}
+    </div>
+  );
 }
 
 export function OfficeExpenses() {
@@ -41,6 +281,11 @@ export function OfficeExpenses() {
   );
   const [typeDialogError, setTypeDialogError] = useState<string | null>(null);
 
+  const [renameTypeDialogOpen, setRenameTypeDialogOpen] = useState(false);
+  const [renameTypeId, setRenameTypeId] = useState<string | null>(null);
+  const [renameTypeName, setRenameTypeName] = useState("");
+  const [renameTypeError, setRenameTypeError] = useState<string | null>(null);
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDesc, setEditDesc] = useState("");
   const [editAmount, setEditAmount] = useState("");
@@ -53,7 +298,28 @@ export function OfficeExpenses() {
   const [expenseMin, setExpenseMin] = useState("");
   const [expenseMax, setExpenseMax] = useState("");
   const [paymentModeFilter, setPaymentModeFilter] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
+  const [typeFilterIds, setTypeFilterIds] = useState<string[]>([]);
+  const [typeFilterMenuOpen, setTypeFilterMenuOpen] = useState(false);
+  const [typeFilterQuery, setTypeFilterQuery] = useState("");
+
+  const typeFilterFloating = useFloating({
+    open: typeFilterMenuOpen,
+    placement: "bottom-start",
+    whileElementsMounted: autoUpdate,
+    middleware: [
+      offset(4),
+      flip({ fallbackPlacements: ["top-start"] }),
+      shift({ padding: 8 }),
+      size({
+        apply({ rects, elements }) {
+          Object.assign(elements.floating.style, {
+            minWidth: `${rects.reference.width}px`,
+            maxWidth: "280px",
+          });
+        },
+      }),
+    ],
+  });
 
   const load = () =>
     api.officeExpenses
@@ -75,6 +341,33 @@ export function OfficeExpenses() {
       .then(setExpenseTypes)
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!typeFilterMenuOpen) return;
+    const onDocMouseDown = (ev: MouseEvent) => {
+      const target = ev.target as Node;
+      const tfRef = typeFilterFloating.refs.reference.current;
+      if (
+        tfRef &&
+        tfRef instanceof HTMLElement &&
+        tfRef.contains(target)
+      )
+        return;
+      if (typeFilterFloating.refs.floating.current?.contains(target)) return;
+      setTypeFilterMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [typeFilterMenuOpen]);
+
+  useEffect(() => {
+    if (!typeFilterMenuOpen) setTypeFilterQuery("");
+  }, [typeFilterMenuOpen]);
+
+  const typeFilterSearch = typeFilterQuery.trim().toLowerCase();
+  const typeFilterListFiltered = expenseTypes.filter((t) =>
+    typeFilterSearch ? t.name.toLowerCase().includes(typeFilterSearch) : true,
+  );
 
   const loadTypes = () =>
     api.officeExpenseTypes.list().then(setExpenseTypes).catch(() => {});
@@ -124,6 +417,52 @@ export function OfficeExpenses() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [typeDialogOpen]);
+
+  const openRenameTypeDialog = (typeId: string) => {
+    const t = expenseTypes.find((x) => x.id === typeId);
+    if (!t) return;
+    setRenameTypeId(typeId);
+    setRenameTypeName(t.name);
+    setRenameTypeError(null);
+    setRenameTypeDialogOpen(true);
+  };
+
+  const closeRenameTypeDialog = () => {
+    setRenameTypeDialogOpen(false);
+    setRenameTypeId(null);
+    setRenameTypeName("");
+    setRenameTypeError(null);
+  };
+
+  const submitRenameType = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!renameTypeId || !renameTypeName.trim()) return;
+    try {
+      setRenameTypeError(null);
+      await api.officeExpenseTypes.update(renameTypeId, {
+        name: renameTypeName.trim(),
+      });
+      await loadTypes();
+      await load();
+      closeRenameTypeDialog();
+    } catch (err) {
+      setRenameTypeError((err as Error).message);
+    }
+  };
+
+  useEffect(() => {
+    if (!renameTypeDialogOpen) return;
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") {
+        setRenameTypeDialogOpen(false);
+        setRenameTypeId(null);
+        setRenameTypeName("");
+        setRenameTypeError(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [renameTypeDialogOpen]);
 
   const addItem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -231,8 +570,10 @@ export function OfficeExpenses() {
       (row.paymentMethodId ?? "") !== paymentModeFilter
     )
       return false;
-    if (typeFilter && (row.officeExpenseTypeId ?? "") !== typeFilter)
-      return false;
+    if (typeFilterIds.length > 0) {
+      const rid = row.officeExpenseTypeId ?? "";
+      if (!rid || !typeFilterIds.includes(rid)) return false;
+    }
     return true;
   });
 
@@ -244,7 +585,7 @@ export function OfficeExpenses() {
     expenseMin ||
     expenseMax ||
     paymentModeFilter ||
-    typeFilter;
+    typeFilterIds.length > 0;
 
   return (
     <div
@@ -442,30 +783,142 @@ export function OfficeExpenses() {
           </select>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+          }}
+        >
           <label
             style={{ fontSize: "0.85rem", fontWeight: 500, color: "#555" }}
           >
-            Type
+            Types
           </label>
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            style={{
-              padding: "0.4rem 0.6rem",
-              border: "1px solid #ccc",
-              borderRadius: 4,
-              fontSize: "0.9rem",
-              minWidth: 120,
-            }}
+          <div
+            ref={typeFilterFloating.refs.setReference}
+            style={{ position: "relative", minWidth: 180 }}
           >
-            <option value="">All</option>
-            {expenseTypes.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
+            <input
+              type="text"
+              autoComplete="off"
+              aria-expanded={typeFilterMenuOpen}
+              aria-haspopup="listbox"
+              placeholder={
+                typeFilterIds.length > 0
+                  ? `${typeFilterIds.length} selected — type to filter…`
+                  : "Search types…"
+              }
+              value={typeFilterQuery}
+              onChange={(e) => {
+                setTypeFilterQuery(e.target.value);
+                setTypeFilterMenuOpen(true);
+              }}
+              onFocus={() => setTypeFilterMenuOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.stopPropagation();
+                  setTypeFilterMenuOpen(false);
+                }
+              }}
+              style={{
+                padding: "0.4rem 0.6rem",
+                border: "1px solid #ccc",
+                borderRadius: 4,
+                fontSize: "0.9rem",
+                width: "100%",
+                minWidth: 180,
+                boxSizing: "border-box",
+                background: "#fff",
+              }}
+            />
+            {typeFilterMenuOpen && (
+              <FloatingPortal>
+                <div
+                  ref={typeFilterFloating.refs.setFloating}
+                  role="listbox"
+                  aria-multiselectable
+                  style={{
+                    ...typeFilterFloating.floatingStyles,
+                    zIndex: 200,
+                    display: "flex",
+                    flexDirection: "column",
+                    maxHeight: "min(360px, 55vh)",
+                    overflow: "hidden",
+                    background: "#fff",
+                    border: "1px solid #ccc",
+                    borderRadius: 4,
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+                  }}
+                >
+                  <div
+                    style={{
+                      overflowY: "auto",
+                      overflowX: "hidden",
+                      flex: 1,
+                      minHeight: 0,
+                      padding: "0.35rem 0",
+                      WebkitOverflowScrolling: "touch",
+                    }}
+                  >
+                    {expenseTypes.length === 0 ? (
+                      <div
+                        style={{
+                          padding: "0.5rem 0.75rem",
+                          fontSize: "0.85rem",
+                          color: "#666",
+                        }}
+                      >
+                        No types yet
+                      </div>
+                    ) : typeFilterListFiltered.length === 0 ? (
+                      <div
+                        style={{
+                          padding: "0.5rem 0.75rem",
+                          fontSize: "0.85rem",
+                          color: "#666",
+                        }}
+                      >
+                        No types match “{typeFilterQuery.trim()}”
+                      </div>
+                    ) : (
+                      typeFilterListFiltered.map((t) => {
+                        const checked = typeFilterIds.includes(t.id);
+                        return (
+                          <label
+                            key={t.id}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.5rem",
+                              padding: "0.35rem 0.75rem",
+                              fontSize: "0.875rem",
+                              cursor: "pointer",
+                              userSelect: "none",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onChange={() => {
+                                setTypeFilterIds((prev) =>
+                                  checked
+                                    ? prev.filter((id) => id !== t.id)
+                                    : [...prev, t.id],
+                                );
+                              }}
+                            />
+                            <span>{t.name}</span>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </FloatingPortal>
+            )}
+          </div>
         </div>
       </div>
 
@@ -595,10 +1048,13 @@ export function OfficeExpenses() {
               <span style={{ opacity: 0.7 }}>×</span>
             </button>
           )}
-          {typeFilter && (
+          {typeFilterIds.map((tid) => (
             <button
+              key={tid}
               type="button"
-              onClick={() => setTypeFilter("")}
+              onClick={() =>
+                setTypeFilterIds((prev) => prev.filter((id) => id !== tid))
+              }
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -613,10 +1069,10 @@ export function OfficeExpenses() {
               }}
             >
               Type:{" "}
-              {expenseTypes.find((t) => t.id === typeFilter)?.name ?? typeFilter}
+              {expenseTypes.find((t) => t.id === tid)?.name ?? tid}
               <span style={{ opacity: 0.7 }}>×</span>
             </button>
-          )}
+          ))}
         </div>
       )}
 
@@ -697,33 +1153,45 @@ export function OfficeExpenses() {
                         />
                       </td>
                       <td style={{ padding: "0.4rem 0.75rem" }}>
-                        <select
-                          value={editOfficeExpenseTypeId}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            if (v === ADD_NEW_TYPE_VALUE) {
-                              openTypeDialog("edit");
-                              return;
-                            }
-                            setEditOfficeExpenseTypeId(v);
-                          }}
+                        <div
                           style={{
-                            padding: "0.4rem",
-                            border: "1px solid #ccc",
-                            borderRadius: 4,
-                            minWidth: 120,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.35rem",
                           }}
                         >
-                          <option value="">—</option>
-                          {expenseTypes.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.name}
-                            </option>
-                          ))}
-                          <option value={ADD_NEW_TYPE_VALUE}>
-                            + Add new type…
-                          </option>
-                        </select>
+                          <OfficeExpenseTypeCombobox
+                            types={expenseTypes}
+                            selectedId={editOfficeExpenseTypeId}
+                            onSelectedIdChange={setEditOfficeExpenseTypeId}
+                            onRequestCreateNew={() => openTypeDialog("edit")}
+                            placeholder="Type (optional)"
+                            minInputWidth={120}
+                            inputStyle={{ padding: "0.4rem" }}
+                          />
+                          <button
+                            type="button"
+                            title="Edit type name"
+                            disabled={!editOfficeExpenseTypeId}
+                            onClick={() =>
+                              openRenameTypeDialog(editOfficeExpenseTypeId)
+                            }
+                            style={{
+                              flexShrink: 0,
+                              padding: "0.35rem",
+                              border: "1px solid #ccc",
+                              borderRadius: 4,
+                              background: "#fff",
+                              cursor: editOfficeExpenseTypeId
+                                ? "pointer"
+                                : "not-allowed",
+                              opacity: editOfficeExpenseTypeId ? 1 : 0.45,
+                              color: "#1a1a1a",
+                            }}
+                          >
+                            <PencilIcon size={14} />
+                          </button>
+                        </div>
                       </td>
                       <td
                         style={{
@@ -887,31 +1355,42 @@ export function OfficeExpenses() {
               width: 90,
             }}
           />
-          <select
-            value={manualOfficeExpenseTypeId}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v === ADD_NEW_TYPE_VALUE) {
-                openTypeDialog("manual");
-                return;
-              }
-              setManualOfficeExpenseTypeId(v);
-            }}
+          <div
             style={{
-              padding: "0.5rem",
-              border: "1px solid #ccc",
-              borderRadius: 4,
-              minWidth: 140,
+              display: "flex",
+              alignItems: "flex-end",
+              gap: "0.35rem",
+              minWidth: 180,
             }}
           >
-            <option value="">Type (optional)</option>
-            {expenseTypes.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-            <option value={ADD_NEW_TYPE_VALUE}>+ Add new type…</option>
-          </select>
+            <OfficeExpenseTypeCombobox
+              types={expenseTypes}
+              selectedId={manualOfficeExpenseTypeId}
+              onSelectedIdChange={setManualOfficeExpenseTypeId}
+              onRequestCreateNew={() => openTypeDialog("manual")}
+              minInputWidth={140}
+            />
+            <button
+              type="button"
+              title="Edit type name"
+              disabled={!manualOfficeExpenseTypeId}
+              onClick={() =>
+                openRenameTypeDialog(manualOfficeExpenseTypeId)
+              }
+              style={{
+                flexShrink: 0,
+                padding: "0.5rem",
+                border: "1px solid #ccc",
+                borderRadius: 4,
+                background: "#fff",
+                cursor: manualOfficeExpenseTypeId ? "pointer" : "not-allowed",
+                opacity: manualOfficeExpenseTypeId ? 1 : 0.45,
+                color: "#1a1a1a",
+              }}
+            >
+              <PencilIcon size={16} />
+            </button>
+          </div>
           <input
             placeholder="Description"
             value={manualDesc}
@@ -968,6 +1447,121 @@ export function OfficeExpenses() {
           </button>
         </form>
       </div>
+
+      {renameTypeDialogOpen && (
+        <div
+          role="presentation"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "1rem",
+          }}
+          onClick={closeRenameTypeDialog}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="office-rename-type-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: 8,
+              padding: "1.25rem",
+              maxWidth: 400,
+              width: "100%",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+            }}
+          >
+            <h2
+              id="office-rename-type-title"
+              style={{
+                margin: "0 0 1rem",
+                fontSize: "1.1rem",
+                fontWeight: 600,
+              }}
+            >
+              Edit expense type
+            </h2>
+            <form onSubmit={submitRenameType}>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "0.85rem",
+                  color: "#555",
+                }}
+              >
+                Name
+                <input
+                  autoFocus
+                  value={renameTypeName}
+                  onChange={(e) => setRenameTypeName(e.target.value)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    marginTop: 6,
+                    padding: "0.5rem",
+                    border: "1px solid #ccc",
+                    borderRadius: 4,
+                    boxSizing: "border-box",
+                  }}
+                />
+              </label>
+              {renameTypeError && (
+                <p
+                  style={{
+                    color: "#c00",
+                    fontSize: "0.85rem",
+                    margin: "0.75rem 0 0",
+                  }}
+                >
+                  {renameTypeError}
+                </p>
+              )}
+              <div
+                style={{
+                  display: "flex",
+                  gap: "0.5rem",
+                  justifyContent: "flex-end",
+                  marginTop: "1.25rem",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={closeRenameTypeDialog}
+                  style={{
+                    padding: "0.45rem 0.9rem",
+                    background: "#f5f5f5",
+                    border: "1px solid #ccc",
+                    borderRadius: 6,
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    padding: "0.45rem 0.9rem",
+                    background: "#1a1a1a",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 6,
+                    fontWeight: 500,
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  Save
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {typeDialogOpen && (
         <div

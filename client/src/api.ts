@@ -32,6 +32,7 @@ export type Project = {
   type: ProjectType | null;
   status: ProjectStatus | null;
   documentRef: string | null;
+  details: string | null;
   invoiceAmount?: number | null;
   date: string | null;
   balance?: number;
@@ -215,9 +216,9 @@ export const api = {
   projects: {
     list: () => request<Project[]>("/projects"),
     get: (id: string) => request<Project & { lineItems: LineItem[]; projectPayments: ProjectPayment[]; balance: number }>(`/projects/${id}`),
-    create: (data: { name: string; email?: string; contactPerson1Name?: string; contactPerson1Phone?: string; contactPerson2Name?: string; contactPerson2Phone?: string; type?: ProjectType | null; status?: ProjectStatus | null; documentRef?: string | null; invoiceAmount?: number | null; date?: string | null }) =>
+    create: (data: { name: string; email?: string; contactPerson1Name?: string; contactPerson1Phone?: string; contactPerson2Name?: string; contactPerson2Phone?: string; type?: ProjectType | null; status?: ProjectStatus | null; documentRef?: string | null; details?: string | null; invoiceAmount?: number | null; date?: string | null }) =>
       request<Project>("/projects", { method: "POST", body: JSON.stringify(data) }),
-    update: (id: string, data: Partial<Pick<Project, "name" | "email" | "contactPerson1Name" | "contactPerson1Phone" | "contactPerson2Name" | "contactPerson2Phone" | "type" | "status" | "documentRef" | "invoiceAmount" | "date">>) =>
+    update: (id: string, data: Partial<Pick<Project, "name" | "email" | "contactPerson1Name" | "contactPerson1Phone" | "contactPerson2Name" | "contactPerson2Phone" | "type" | "status" | "documentRef" | "details" | "invoiceAmount" | "date">>) =>
       request<Project>(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     delete: (id: string) => request<void>(`/projects/${id}`, { method: "DELETE" }),
     addLineItem: (
@@ -311,6 +312,11 @@ export const api = {
     create: (data: { name: string }) =>
       request<OfficeExpenseType>("/office-expense-types", {
         method: "POST",
+        body: JSON.stringify(data),
+      }),
+    update: (id: string, data: { name: string }) =>
+      request<OfficeExpenseType>(`/office-expense-types/${id}`, {
+        method: "PATCH",
         body: JSON.stringify(data),
       }),
   },

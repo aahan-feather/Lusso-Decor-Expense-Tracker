@@ -1,10 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import {
-  api,
-  type ExpensesAndPaymentsProject,
-  ProjectStatus,
-} from "../api";
+import { api, type ExpensesAndPaymentsProject, ProjectStatus } from "../api";
 import { formatDate, formatMoney } from "../utils/format";
 import { ProjectStatusBadge } from "./projectLineItemsShared";
 

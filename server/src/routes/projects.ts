@@ -27,7 +27,7 @@ projectsRouter.get("/", async (_req, res) => {
 
 projectsRouter.post("/", async (req, res) => {
   try {
-    const { name, email, contactPerson1Name, contactPerson1Phone, contactPerson2Name, contactPerson2Phone, type, status, documentRef, invoiceAmount, date } = req.body as {
+    const { name, email, contactPerson1Name, contactPerson1Phone, contactPerson2Name, contactPerson2Phone, type, status, documentRef, details, invoiceAmount, date } = req.body as {
       name: string;
       email?: string;
       contactPerson1Name?: string;
@@ -37,11 +37,17 @@ projectsRouter.post("/", async (req, res) => {
       type?: string | null;
       status?: string | null;
       documentRef?: string | null;
+      details?: string | null;
       invoiceAmount?: number | null;
       date?: string | null;
     };
     if (!name?.trim())
       return res.status(400).json({ error: "Name is required" });
+    if (date == null || String(date).trim() === "")
+      return res.status(400).json({ error: "Date is required" });
+    const projectDate = new Date(date as string);
+    if (Number.isNaN(projectDate.getTime()))
+      return res.status(400).json({ error: "Invalid date" });
     const validType = type === "Quotation" || type === "Invoice" ? type : null;
     const validStatus = status === "Running" || status === "Due" || status === "Closed" ? status : null;
     const project = await prisma.project.create({
@@ -55,8 +61,11 @@ projectsRouter.post("/", async (req, res) => {
         ...(validType && { type: validType }),
         ...(validStatus && { status: validStatus }),
         ...(documentRef !== undefined && { documentRef: documentRef?.trim() ?? null }),
+        ...(details !== undefined && {
+          details: details == null || String(details).trim() === "" ? null : String(details).trim(),
+        }),
         ...(invoiceAmount != null && { invoiceAmount: Number(invoiceAmount) }),
-        ...(date != null && date !== "" && { date: new Date(date) }),
+        date: projectDate,
       },
     });
     res.status(201).json(project);
@@ -96,7 +105,7 @@ projectsRouter.get("/:id", async (req, res) => {
 
 projectsRouter.patch("/:id", async (req, res) => {
   try {
-    const { name, email, contactPerson1Name, contactPerson1Phone, contactPerson2Name, contactPerson2Phone, type, status, documentRef, invoiceAmount, date } = req.body as {
+    const { name, email, contactPerson1Name, contactPerson1Phone, contactPerson2Name, contactPerson2Phone, type, status, documentRef, details, invoiceAmount, date } = req.body as {
       name?: string;
       email?: string;
       contactPerson1Name?: string;
@@ -106,6 +115,7 @@ projectsRouter.patch("/:id", async (req, res) => {
       type?: string | null;
       status?: string | null;
       documentRef?: string | null;
+      details?: string | null;
       invoiceAmount?: number | null;
       date?: string | null;
     };
@@ -123,6 +133,9 @@ projectsRouter.patch("/:id", async (req, res) => {
         ...(validType !== undefined && { type: validType }),
         ...(validStatus !== undefined && { status: validStatus }),
         ...(documentRef !== undefined && { documentRef: documentRef?.trim() ?? null }),
+        ...(details !== undefined && {
+          details: details == null || String(details).trim() === "" ? null : String(details).trim(),
+        }),
         ...(invoiceAmount !== undefined && { invoiceAmount: invoiceAmount == null ? null : Number(invoiceAmount) }),
         ...(date !== undefined && { date: date == null || date === "" ? null : new Date(date) }),
       },

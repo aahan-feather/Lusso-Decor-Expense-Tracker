@@ -58,6 +58,23 @@ export function mergeEntries(
   return merged;
 }
 
+/** For Add expense / Receive payment header totals only. */
+function projectExpensesAndReceivedTotals(
+  project: ExpensesAndPaymentsProject,
+): { totalExpenses: number; totalReceived: number } {
+  const totalExpenses = (project.lineItems ?? []).reduce((sum, item) => {
+    const rate = item.rate ?? null;
+    const qty = item.qty ?? null;
+    const total = rate != null && qty != null ? rate * qty : (item.amount ?? 0);
+    return sum + total;
+  }, 0);
+  const totalReceived = (project.projectPayments ?? []).reduce(
+    (s, p) => s + p.amount,
+    0,
+  );
+  return { totalExpenses, totalReceived };
+}
+
 const STATUS_STYLES: Record<
   ProjectStatus,
   { background: string; color: string }
@@ -216,8 +233,15 @@ export function EditLineItemRow({
   );
   const [submitting, setSubmitting] = useState(false);
 
+  const isLedgerMode = paymentMethodId.trim() === "";
+  const ledgerNeedsVendor = isLedgerMode && !vendorId.trim();
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (ledgerNeedsVendor) {
+      onError("Select a vendor when using Ledger as payment method.");
+      return;
+    }
     if (!description.trim()) {
       onError("Description is required");
       return;
@@ -358,15 +382,17 @@ export function EditLineItemRow({
           <button
             type="button"
             onClick={handleSave}
-            disabled={submitting}
+            disabled={submitting || ledgerNeedsVendor}
             style={{
               padding: "0.35rem 0.6rem",
               background: "#1a1a1a",
               color: "#fff",
               borderRadius: 4,
               fontSize: "0.85rem",
-              cursor: "pointer",
+              cursor:
+                submitting || ledgerNeedsVendor ? "not-allowed" : "pointer",
               border: "none",
+              opacity: ledgerNeedsVendor ? 0.5 : 1,
             }}
           >
             Save
@@ -545,12 +571,14 @@ export function AddExpenseForm({
   projectId,
   vendors,
   paymentMethods,
+  totalExpenses,
   onAdded,
   onError,
 }: {
   projectId: string;
   vendors: Vendor[];
   paymentMethods: PaymentMethod[];
+  totalExpenses: number;
   onAdded: () => void;
   onError: (s: string) => void;
 }) {
@@ -563,8 +591,15 @@ export function AddExpenseForm({
   const [paymentMethodId, setPaymentMethodId] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const isLedgerMode = paymentMethodId === "";
+  const ledgerNeedsVendor = isLedgerMode && !vendorId.trim();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (ledgerNeedsVendor) {
+      onError("Select a vendor when using Ledger as payment method.");
+      return;
+    }
     if (!name.trim()) return;
     const hasRateQty = rate !== "" && qty !== "";
     const hasAmount = amount !== "";
@@ -627,15 +662,23 @@ export function AddExpenseForm({
         minWidth: 0,
       }}
     >
-      <strong
+      <div
         style={{
           width: "100%",
           marginBottom: 4,
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: "0.35rem 0.75rem",
           fontSize: "0.8125rem",
         }}
       >
-        Add expense
-      </strong>
+        <strong>Add expense</strong>
+        <span style={{ fontWeight: 500 }}>
+          Total expenses {formatMoney(totalExpenses)}
+        </span>
+      </div>
       <input
         type="text"
         placeholder="dd/mm/yy"
@@ -649,7 +692,7 @@ export function AddExpenseForm({
           width: 90,
         }}
       />
-      <input
+      <textarea
         placeholder="Name"
         value={name}
         onChange={(e) => setName(e.target.value)}
@@ -739,7 +782,7 @@ export function AddExpenseForm({
             minWidth: 130,
           }}
         >
-          <option value="">Vendor (optional)</option>
+          <option value="">Vendor</option>
           {vendors.map((v) => (
             <option key={v.id} value={v.id}>
               {v.name}
@@ -749,13 +792,15 @@ export function AddExpenseForm({
       )}
       <button
         type="submit"
-        disabled={submitting}
+        disabled={submitting || ledgerNeedsVendor}
         style={{
           padding: "0.5rem 1rem",
           background: "#1a1a1a",
           color: "#fff",
           borderRadius: 6,
           fontWeight: 500,
+          cursor: submitting || ledgerNeedsVendor ? "not-allowed" : "pointer",
+          opacity: ledgerNeedsVendor ? 0.5 : 1,
         }}
       >
         Add
@@ -767,11 +812,13 @@ export function AddExpenseForm({
 export function AddPaymentForm({
   projectId,
   paymentMethods,
+  totalReceived,
   onAdded,
   onError,
 }: {
   projectId: string;
   paymentMethods: PaymentMethod[];
+  totalReceived: number;
   onAdded: () => void;
   onError: (s: string) => void;
 }) {
@@ -817,15 +864,23 @@ export function AddPaymentForm({
         minWidth: 0,
       }}
     >
-      <strong
+      <div
         style={{
           width: "100%",
           marginBottom: 4,
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: "0.35rem 0.75rem",
           fontSize: "0.8125rem",
         }}
       >
-        Receive payment
-      </strong>
+        <strong>Receive payment</strong>
+        <span style={{ fontWeight: 500 }}>
+          Total received {formatMoney(totalReceived)}
+        </span>
+      </div>
       <input
         type="text"
         placeholder="dd/mm/yy"
@@ -839,7 +894,7 @@ export function AddPaymentForm({
           width: 90,
         }}
       />
-      <input
+      <textarea
         placeholder="Name / note"
         value={name}
         onChange={(e) => setName(e.target.value)}
@@ -924,6 +979,8 @@ export function ProjectExpenseLedger({
   );
 
   const entries = mergeEntries(project);
+  const { totalExpenses, totalReceived } =
+    projectExpensesAndReceivedTotals(project);
 
   return (
     <div>
@@ -980,249 +1037,252 @@ export function ProjectExpenseLedger({
               </tr>
             </thead>
             <tbody>
-            {entries.map((entry) => {
-              if (entry.type === "expense") {
-                const item = entry.data as LineItem;
-                const editingKey = `${project.id}-${item.id}`;
-                const isEditing = editingLineItemKey === editingKey;
-                if (isEditing) {
+              {entries.map((entry) => {
+                if (entry.type === "expense") {
+                  const item = entry.data as LineItem;
+                  const editingKey = `${project.id}-${item.id}`;
+                  const isEditing = editingLineItemKey === editingKey;
+                  if (isEditing) {
+                    return (
+                      <EditLineItemRow
+                        key={`edit-${item.id}`}
+                        item={item}
+                        projectId={project.id}
+                        vendors={vendors}
+                        paymentMethods={paymentMethods}
+                        onSaved={() => {
+                          setEditingLineItemKey(null);
+                          onRefresh();
+                        }}
+                        onCancel={() => setEditingLineItemKey(null)}
+                        onError={(msg) => onError(msg)}
+                      />
+                    );
+                  }
+                  const rate = item.rate ?? null;
+                  const qty = item.qty ?? null;
+                  const total =
+                    rate != null && qty != null ? rate * qty : item.amount;
                   return (
-                    <EditLineItemRow
-                      key={`edit-${item.id}`}
-                      item={item}
-                      projectId={project.id}
-                      vendors={vendors}
-                      paymentMethods={paymentMethods}
-                      onSaved={() => {
-                        setEditingLineItemKey(null);
-                        onRefresh();
-                      }}
-                      onCancel={() => setEditingLineItemKey(null)}
-                      onError={(msg) => onError(msg)}
-                    />
+                    <tr
+                      key={`e-${item.id}`}
+                      style={{ borderTop: "1px solid #eee" }}
+                    >
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {formatDate(item.date)}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          textAlign: "right",
+                          fontWeight: 500,
+                        }}
+                      >
+                        -
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem 0.4rem 2rem",
+                        }}
+                      >
+                        {item.description}
+                      </td>
+                      <td style={{ padding: "0.4rem 0.75rem" }}>
+                        {qty != null ? qty : "—"}
+                      </td>
+                      <td style={{ padding: "0.4rem 0.75rem" }}>
+                        {rate != null ? formatMoney(rate) : "—"}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          textAlign: "right",
+                          fontWeight: 500,
+                        }}
+                      >
+                        {formatMoney(total)}
+                      </td>
+                      <td style={{ padding: "0.4rem 0.75rem" }}>
+                        {item.paymentMethod
+                          ? item.paymentMethod.name
+                          : "Ledger"}
+                      </td>
+                      <td style={{ padding: "0.4rem 0.75rem" }}>
+                        {item.vendor ? item.vendor.name : "—"}
+                      </td>
+                      <td style={{ padding: "0.4rem 0.75rem" }}>
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                          <button
+                            type="button"
+                            title="Edit"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingLineItemKey(editingKey);
+                            }}
+                            style={{
+                              color: "#1a1a1a",
+                              fontSize: "0.85rem",
+                              cursor: "pointer",
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                            }}
+                          >
+                            <PencilIcon size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            title="Delete"
+                            onClick={async () => {
+                              if (!confirm("Delete this line item?")) return;
+                              try {
+                                await api.projects.deleteLineItem(
+                                  project.id,
+                                  item.id,
+                                );
+                                onRefresh();
+                              } catch (err) {
+                                onError((err as Error).message);
+                              }
+                            }}
+                            style={{
+                              color: "#c00",
+                              fontSize: "0.85rem",
+                              cursor: "pointer",
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                            }}
+                          >
+                            <TrashIcon size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                } else {
+                  const p = entry.data as ProjectPayment;
+                  const paymentEditingKey = `${project.id}-${p.id}`;
+                  const isEditingPayment =
+                    editingPaymentKey === paymentEditingKey;
+                  if (isEditingPayment) {
+                    return (
+                      <EditPaymentRow
+                        key={`edit-p-${p.id}`}
+                        payment={p}
+                        projectId={project.id}
+                        paymentMethods={paymentMethods}
+                        onSaved={() => {
+                          setEditingPaymentKey(null);
+                          onRefresh();
+                        }}
+                        onCancel={() => setEditingPaymentKey(null)}
+                        onError={(msg) => onError(msg)}
+                      />
+                    );
+                  }
+                  return (
+                    <tr
+                      key={`p-${p.id}`}
+                      style={{ borderTop: "1px solid #eee" }}
+                    >
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {formatDate(p.date)}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          textAlign: "right",
+                          fontWeight: 500,
+                        }}
+                      >
+                        {formatMoney(p.amount)}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem 0.4rem 2rem",
+                        }}
+                      >
+                        {p.note?.trim() || "Payment received"}
+                      </td>
+                      <td style={{ padding: "0.4rem 0.75rem" }}>—</td>
+                      <td style={{ padding: "0.4rem 0.75rem" }}>—</td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          textAlign: "right",
+                          fontWeight: 500,
+                        }}
+                      >
+                        -
+                      </td>
+                      <td style={{ padding: "0.4rem 0.75rem" }}>
+                        {p.paymentMethod ? p.paymentMethod.name : "—"}
+                      </td>
+                      <td style={{ padding: "0.4rem 0.75rem" }}>—</td>
+                      <td style={{ padding: "0.4rem 0.75rem" }}>
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                          <button
+                            type="button"
+                            title="Edit"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingPaymentKey(paymentEditingKey);
+                            }}
+                            style={{
+                              color: "#1a1a1a",
+                              fontSize: "0.85rem",
+                              cursor: "pointer",
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                            }}
+                          >
+                            <PencilIcon size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            title="Delete"
+                            onClick={async () => {
+                              if (!confirm("Delete this payment?")) return;
+                              try {
+                                await api.projects.deletePayment(
+                                  project.id,
+                                  p.id,
+                                );
+                                onRefresh();
+                              } catch (err) {
+                                onError((err as Error).message);
+                              }
+                            }}
+                            style={{
+                              color: "#c00",
+                              fontSize: "0.85rem",
+                              cursor: "pointer",
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                            }}
+                          >
+                            <TrashIcon size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
                   );
                 }
-                const rate = item.rate ?? null;
-                const qty = item.qty ?? null;
-                const total =
-                  rate != null && qty != null ? rate * qty : item.amount;
-                return (
-                  <tr
-                    key={`e-${item.id}`}
-                    style={{ borderTop: "1px solid #eee" }}
-                  >
-                    <td
-                      style={{
-                        padding: "0.4rem 0.75rem",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {formatDate(item.date)}
-                    </td>
-                    <td
-                      style={{
-                        padding: "0.4rem 0.75rem",
-                        textAlign: "right",
-                        fontWeight: 500,
-                      }}
-                    >
-                      -
-                    </td>
-                    <td
-                      style={{
-                        padding: "0.4rem 0.75rem 0.4rem 2rem",
-                      }}
-                    >
-                      {item.description}
-                    </td>
-                    <td style={{ padding: "0.4rem 0.75rem" }}>
-                      {qty != null ? qty : "—"}
-                    </td>
-                    <td style={{ padding: "0.4rem 0.75rem" }}>
-                      {rate != null ? formatMoney(rate) : "—"}
-                    </td>
-                    <td
-                      style={{
-                        padding: "0.4rem 0.75rem",
-                        textAlign: "right",
-                        fontWeight: 500,
-                      }}
-                    >
-                      {formatMoney(total)}
-                    </td>
-                    <td style={{ padding: "0.4rem 0.75rem" }}>
-                      {item.paymentMethod
-                        ? item.paymentMethod.name
-                        : "Ledger"}
-                    </td>
-                    <td style={{ padding: "0.4rem 0.75rem" }}>
-                      {item.vendor ? item.vendor.name : "—"}
-                    </td>
-                    <td style={{ padding: "0.4rem 0.75rem" }}>
-                      <div style={{ display: "flex", gap: "0.5rem" }}>
-                        <button
-                          type="button"
-                          title="Edit"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingLineItemKey(editingKey);
-                          }}
-                          style={{
-                            color: "#1a1a1a",
-                            fontSize: "0.85rem",
-                            cursor: "pointer",
-                            background: "none",
-                            border: "none",
-                            padding: 0,
-                          }}
-                        >
-                          <PencilIcon size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          title="Delete"
-                          onClick={async () => {
-                            if (!confirm("Delete this line item?")) return;
-                            try {
-                              await api.projects.deleteLineItem(
-                                project.id,
-                                item.id,
-                              );
-                              onRefresh();
-                            } catch (err) {
-                              onError((err as Error).message);
-                            }
-                          }}
-                          style={{
-                            color: "#c00",
-                            fontSize: "0.85rem",
-                            cursor: "pointer",
-                            background: "none",
-                            border: "none",
-                            padding: 0,
-                          }}
-                        >
-                          <TrashIcon size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              } else {
-                const p = entry.data as ProjectPayment;
-                const paymentEditingKey = `${project.id}-${p.id}`;
-                const isEditingPayment =
-                  editingPaymentKey === paymentEditingKey;
-                if (isEditingPayment) {
-                  return (
-                    <EditPaymentRow
-                      key={`edit-p-${p.id}`}
-                      payment={p}
-                      projectId={project.id}
-                      paymentMethods={paymentMethods}
-                      onSaved={() => {
-                        setEditingPaymentKey(null);
-                        onRefresh();
-                      }}
-                      onCancel={() => setEditingPaymentKey(null)}
-                      onError={(msg) => onError(msg)}
-                    />
-                  );
-                }
-                return (
-                  <tr
-                    key={`p-${p.id}`}
-                    style={{ borderTop: "1px solid #eee" }}
-                  >
-                    <td
-                      style={{
-                        padding: "0.4rem 0.75rem",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {formatDate(p.date)}
-                    </td>
-                    <td
-                      style={{
-                        padding: "0.4rem 0.75rem",
-                        textAlign: "right",
-                        fontWeight: 500,
-                      }}
-                    >
-                      {formatMoney(p.amount)}
-                    </td>
-                    <td
-                      style={{
-                        padding: "0.4rem 0.75rem 0.4rem 2rem",
-                      }}
-                    >
-                      {p.note?.trim() || "Payment received"}
-                    </td>
-                    <td style={{ padding: "0.4rem 0.75rem" }}>—</td>
-                    <td style={{ padding: "0.4rem 0.75rem" }}>—</td>
-                    <td
-                      style={{
-                        padding: "0.4rem 0.75rem",
-                        textAlign: "right",
-                        fontWeight: 500,
-                      }}
-                    >
-                      -
-                    </td>
-                    <td style={{ padding: "0.4rem 0.75rem" }}>
-                      {p.paymentMethod ? p.paymentMethod.name : "—"}
-                    </td>
-                    <td style={{ padding: "0.4rem 0.75rem" }}>—</td>
-                    <td style={{ padding: "0.4rem 0.75rem" }}>
-                      <div style={{ display: "flex", gap: "0.5rem" }}>
-                        <button
-                          type="button"
-                          title="Edit"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingPaymentKey(paymentEditingKey);
-                          }}
-                          style={{
-                            color: "#1a1a1a",
-                            fontSize: "0.85rem",
-                            cursor: "pointer",
-                            background: "none",
-                            border: "none",
-                            padding: 0,
-                          }}
-                        >
-                          <PencilIcon size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          title="Delete"
-                          onClick={async () => {
-                            if (!confirm("Delete this payment?")) return;
-                            try {
-                              await api.projects.deletePayment(project.id, p.id);
-                              onRefresh();
-                            } catch (err) {
-                              onError((err as Error).message);
-                            }
-                          }}
-                          style={{
-                            color: "#c00",
-                            fontSize: "0.85rem",
-                            cursor: "pointer",
-                            background: "none",
-                            border: "none",
-                            padding: 0,
-                          }}
-                        >
-                          <TrashIcon size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              }
-            })}
-          </tbody>
+              })}
+            </tbody>
           </table>
         )}
       </div>
@@ -1247,6 +1307,7 @@ export function ProjectExpenseLedger({
             projectId={project.id}
             vendors={vendors}
             paymentMethods={paymentMethods}
+            totalExpenses={totalExpenses}
             onAdded={onRefresh}
             onError={(msg) => onError(msg)}
           />
@@ -1261,6 +1322,7 @@ export function ProjectExpenseLedger({
           <AddPaymentForm
             projectId={project.id}
             paymentMethods={paymentMethods}
+            totalReceived={totalReceived}
             onAdded={onRefresh}
             onError={(msg) => onError(msg)}
           />

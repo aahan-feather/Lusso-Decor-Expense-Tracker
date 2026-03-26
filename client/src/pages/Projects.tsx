@@ -249,9 +249,7 @@ export function ProjectList() {
                   <td style={{ padding: "0.4rem 0.75rem", color: "#666" }}>
                     {c.contactPerson2Phone ?? "—"}
                   </td>
-                  <td
-                    style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}
-                  >
+                  <td style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
                     {formatMoney(c.invoiceAmount ?? 0)}
                   </td>
                   <td
@@ -303,6 +301,7 @@ export function ProjectDetail() {
   const [contactPerson1Phone, setContactPerson1Phone] = useState("");
   const [contactPerson2Name, setContactPerson2Name] = useState("");
   const [contactPerson2Phone, setContactPerson2Phone] = useState("");
+  const [projectDetails, setProjectDetails] = useState("");
   const [saving, setSaving] = useState(false);
 
   const load = () => {
@@ -335,12 +334,14 @@ export function ProjectDetail() {
       setContactPerson1Phone(project.contactPerson1Phone ?? "");
       setContactPerson2Name(project.contactPerson2Name ?? "");
       setContactPerson2Phone(project.contactPerson2Phone ?? "");
+      setProjectDetails(project.details ?? "");
     }
   }, [
     project?.id,
     project?.type,
     project?.status,
     project?.documentRef,
+    project?.details,
     project?.date,
     project?.name,
     project?.contactPerson1Name,
@@ -383,6 +384,12 @@ export function ProjectDetail() {
   const canDeleteProject =
     !isCreateMode && project && expenses === 0 && received === 0;
 
+  const createDateValid =
+    projectDate.trim().length > 0 &&
+    parseDateInput(projectDate.trim()) !== null;
+  const createFormComplete =
+    projectName.trim().length > 0 && createDateValid;
+
   const saveProjectFields = async () => {
     const parsed = parseAmountInput(invoiceAmount);
     const invVal = invoiceAmount.trim()
@@ -404,23 +411,24 @@ export function ProjectDetail() {
     const dateISO = projectDate.trim()
       ? (parseDateInput(projectDate.trim()) ?? undefined)
       : undefined;
+    if (isCreateMode && (!projectName.trim() || !dateISO)) return;
     setSaving(true);
     try {
       if (isCreateMode) {
-        if (!projectName.trim()) return;
-        const created = await api.projects.create({
+        await api.projects.create({
           name: projectName.trim(),
           invoiceAmount: invVal ?? undefined,
           type: newType ?? undefined,
           status: newStatus ?? undefined,
           documentRef: documentRef.trim() || undefined,
-          date: dateISO ?? undefined,
+          date: dateISO,
           contactPerson1Name: contactPerson1Name.trim() || undefined,
           contactPerson1Phone: contactPerson1Phone.trim() || undefined,
           contactPerson2Name: contactPerson2Name.trim() || undefined,
           contactPerson2Phone: contactPerson2Phone.trim() || undefined,
+          details: projectDetails.trim() || undefined,
         });
-        navigate(`/projects/${created.id}`);
+        navigate(`/project-line-items`);
       } else if (id) {
         await api.projects.update(id, {
           name: projectName.trim() || undefined,
@@ -428,6 +436,7 @@ export function ProjectDetail() {
           type: newType ?? undefined,
           status: newStatus ?? undefined,
           documentRef: documentRef.trim() || undefined,
+          details: projectDetails.trim() || null,
           date: dateISO ?? (projectDate.trim() ? undefined : null),
           contactPerson1Name: contactPerson1Name.trim() || undefined,
           contactPerson1Phone: contactPerson1Phone.trim() || undefined,
@@ -605,6 +614,33 @@ export function ProjectDetail() {
               fontFamily: "monospace",
             }}
           />
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.35rem",
+            }}
+          >
+            <span style={{ fontSize: "0.9rem" }}>Project details</span>
+            <textarea
+              value={projectDetails}
+              onChange={(e) => setProjectDetails(e.target.value)}
+              placeholder="Notes, scope, or anything else for this project…"
+              rows={6}
+              style={{
+                width: "100%",
+                padding: "0.5rem 0.6rem",
+                border: "1px solid #ccc",
+                borderRadius: 4,
+                fontFamily: "inherit",
+                fontSize: "0.9rem",
+                lineHeight: 1.45,
+                resize: "vertical",
+              }}
+            />
+          </div>
+
           <span style={{ fontSize: "0.9rem" }}>Amount Recieved</span>
           <span>{formatMoney(received)}</span>
           <span style={{ fontSize: "0.9rem" }}>Expenses</span>
@@ -644,15 +680,23 @@ export function ProjectDetail() {
         <button
           type="button"
           onClick={saveProjectFields}
-          disabled={saving}
+          disabled={
+            saving || (isCreateMode && !createFormComplete)
+          }
           style={{
             padding: "0.5rem 1rem",
-            background: "#1a1a1a",
+            background:
+              saving || (isCreateMode && !createFormComplete)
+                ? "#999"
+                : "#1a1a1a",
             color: "#f5f5f0",
             borderRadius: 6,
             fontWeight: 500,
             border: "none",
-            cursor: saving ? "not-allowed" : "pointer",
+            cursor:
+              saving || (isCreateMode && !createFormComplete)
+                ? "not-allowed"
+                : "pointer",
           }}
         >
           {saving

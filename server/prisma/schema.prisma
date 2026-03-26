@@ -19,6 +19,7 @@ model Project {
   type                String?  // "Quotation" or "Invoice"
   status              String?  // "Running", "Due", "Closed"
   documentRef         String?  // alphanumeric ID for the quotation/invoice (user-set)
+  details             String?  @db.Text // free-form project notes
   invoiceAmount       Float?        // what you're charging for the project
   date                DateTime?     // project date (e.g. quote/invoice date)
   createdAt           DateTime     @default(now())

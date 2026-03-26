@@ -216,10 +216,12 @@ export function BankAccountRegister() {
   const rows = data?.rows ?? [];
 
   let running = 0;
-  const rowsWithBalance = rows.map((row) => {
-    running += row.direction === "in" ? row.amount : -row.amount;
-    return { row, balance: running };
-  });
+  const rowsWithBalance = rows
+    .map((row) => {
+      running += row.direction === "in" ? row.amount : -row.amount;
+      return { row, balance: running };
+    })
+    .sort((a, b) => b.row.date.localeCompare(a.row.date));
 
   const tableInput: React.CSSProperties = {
     padding: "0.4rem",
@@ -478,7 +480,10 @@ export function BankAccountRegister() {
                 return (
                   <tr
                     key={`${row.sourceType}-${row.sourceId}`}
-                    style={{ borderTop: "1px solid #eee", verticalAlign: "top" }}
+                    style={{
+                      borderTop: "1px solid #eee",
+                      verticalAlign: "top",
+                    }}
                   >
                     <td style={{ ...cellPad, whiteSpace: "nowrap" }}>
                       {formatDate(row.date)}
