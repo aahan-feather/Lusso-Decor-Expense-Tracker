@@ -13,6 +13,7 @@ import {
   api,
   type OfficeExpense,
   type OfficeExpenseType,
+  type OfficeExpenseTypePayable,
   type PaymentMethod,
 } from "../api";
 import {
@@ -286,6 +287,17 @@ export function OfficeExpenses() {
   const [renameTypeName, setRenameTypeName] = useState("");
   const [renameTypeError, setRenameTypeError] = useState<string | null>(null);
 
+  const [allPayables, setAllPayables] = useState<OfficeExpenseTypePayable[]>([]);
+  const [payableTypeId, setPayableTypeId] = useState("");
+  const [payableName, setPayableName] = useState("");
+  const [payableAmount, setPayableAmount] = useState("");
+  const [payableDate, setPayableDate] = useState(() => todayDisplay());
+  const [payableError, setPayableError] = useState<string | null>(null);
+  const [editingPayableId, setEditingPayableId] = useState<string | null>(null);
+  const [editPayableName, setEditPayableName] = useState("");
+  const [editPayableAmount, setEditPayableAmount] = useState("");
+  const [editPayableDate, setEditPayableDate] = useState("");
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDesc, setEditDesc] = useState("");
   const [editAmount, setEditAmount] = useState("");
@@ -331,6 +343,9 @@ export function OfficeExpenses() {
     load().finally(() => setLoading(false));
   }, []);
 
+  const loadAllPayables = () =>
+    api.officeExpenseTypes.listAllPayables().then(setAllPayables).catch(() => {});
+
   useEffect(() => {
     api.paymentMethods
       .list()
@@ -340,6 +355,7 @@ export function OfficeExpenses() {
       .list()
       .then(setExpenseTypes)
       .catch(() => {});
+    loadAllPayables();
   }, []);
 
   useEffect(() => {
@@ -434,6 +450,67 @@ export function OfficeExpenses() {
     setRenameTypeError(null);
   };
 
+  const addPayable = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!payableTypeId || !payableName.trim() || payableAmount === "") return;
+    try {
+      setPayableError(null);
+      const parsed = parseDateInput(payableDate);
+      await api.officeExpenseTypes.createPayable(payableTypeId, {
+        name: payableName.trim(),
+        amount: parseFloat(payableAmount),
+        date: parsed ?? undefined,
+      });
+      setPayableName("");
+      setPayableAmount("");
+      setPayableDate(todayDisplay());
+      await loadAllPayables();
+    } catch (err) {
+      setPayableError((err as Error).message);
+    }
+  };
+
+  const startEditPayable = (p: OfficeExpenseTypePayable) => {
+    setEditingPayableId(p.id);
+    setEditPayableName(p.name);
+    setEditPayableAmount(String(p.amount));
+    setEditPayableDate(formatDate(p.date));
+  };
+
+  const cancelEditPayable = () => {
+    setEditingPayableId(null);
+    setEditPayableName("");
+    setEditPayableAmount("");
+    setEditPayableDate("");
+  };
+
+  const saveEditPayable = async (typeId: string) => {
+    if (!editingPayableId) return;
+    try {
+      setPayableError(null);
+      const parsed = parseDateInput(editPayableDate);
+      await api.officeExpenseTypes.updatePayable(typeId, editingPayableId, {
+        name: editPayableName.trim(),
+        amount: parseFloat(editPayableAmount),
+        date: parsed ?? undefined,
+      });
+      cancelEditPayable();
+      await loadAllPayables();
+    } catch (err) {
+      setPayableError((err as Error).message);
+    }
+  };
+
+  const deletePayable = async (typeId: string, payableId: string) => {
+    try {
+      setPayableError(null);
+      await api.officeExpenseTypes.deletePayable(typeId, payableId);
+      await loadAllPayables();
+    } catch (err) {
+      setPayableError((err as Error).message);
+    }
+  };
+
   const submitRenameType = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!renameTypeId || !renameTypeName.trim()) return;
@@ -442,6 +519,19 @@ export function OfficeExpenses() {
       await api.officeExpenseTypes.update(renameTypeId, {
         name: renameTypeName.trim(),
       });
+      await loadTypes();
+      await load();
+      closeRenameTypeDialog();
+    } catch (err) {
+      setRenameTypeError((err as Error).message);
+    }
+  };
+
+  const deleteRenameType = async () => {
+    if (!renameTypeId) return;
+    try {
+      setRenameTypeError(null);
+      await api.officeExpenseTypes.delete(renameTypeId);
       await loadTypes();
       await load();
       closeRenameTypeDialog();
@@ -586,6 +676,41 @@ export function OfficeExpenses() {
     expenseMax ||
     paymentModeFilter ||
     typeFilterIds.length > 0;
+
+  type TableRow =
+    | { kind: "expense"; data: OfficeExpense }
+    | { kind: "payable"; data: OfficeExpenseTypePayable };
+
+  const filteredPayables = allPayables.filter((p) => {
+    const dk = dateKey(p.date);
+    if (dateFrom && dk < dateFrom) return false;
+    if (dateTo && dk > dateTo) return false;
+    if (typeFilterIds.length > 0) {
+      if (!typeFilterIds.includes(p.officeExpenseTypeId)) return false;
+    }
+    return true;
+  });
+
+  const tableRows: TableRow[] = [
+    ...filtered.map((d): TableRow => ({ kind: "expense", data: d })),
+    ...filteredPayables.map((d): TableRow => ({ kind: "payable", data: d })),
+  ].sort((a, b) => {
+    const da = new Date(a.data.date).getTime();
+    const db = new Date(b.data.date).getTime();
+    return db - da;
+  });
+
+  // Running balance: payable adds, paid subtracts. Computed oldest-first, keyed by row id.
+  const balanceMap = new Map<string, number>();
+  {
+    let running = 0;
+    for (let i = tableRows.length - 1; i >= 0; i--) {
+      const r = tableRows[i];
+      if (r.kind === "payable") running += r.data.amount;
+      else running -= r.data.amount;
+      balanceMap.set(r.data.id, running);
+    }
+  }
 
   return (
     <div
@@ -1109,7 +1234,13 @@ export function OfficeExpenses() {
               <th style={{ padding: "0.4rem 0.75rem" }}>Date</th>
               <th style={{ padding: "0.4rem 0.75rem" }}>Type</th>
               <th style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
-                Amount
+                Amount payable
+              </th>
+              <th style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
+                Amount paid
+              </th>
+              <th style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
+                Balance
               </th>
               <th style={{ padding: "0.4rem 0.75rem" }}>Payment mode</th>
               <th style={{ padding: "0.4rem 0.75rem" }}>Description</th>
@@ -1117,93 +1248,230 @@ export function OfficeExpenses() {
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {tableRows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={8}
                   style={{
                     padding: "1.25rem 0.75rem",
                     textAlign: "center",
                     color: "#666",
                   }}
                 >
-                  {items.length === 0
+                  {items.length === 0 && allPayables.length === 0
                     ? "No office expenses yet. Add one below."
-                    : "No expenses match your filters."}
+                    : "No entries match your filters."}
                 </td>
               </tr>
             ) : (
-              filtered.map((row) => {
-                const isEditing = row.id === editingId;
-                if (isEditing) {
-                  return (
-                    <tr key={row.id} style={{ borderTop: "1px solid #eee" }}>
-                      <td style={{ padding: "0.4rem 0.75rem" }}>
-                        <input
-                          type="text"
-                          placeholder="dd/mm/yy"
-                          value={editDate}
-                          onChange={(e) => setEditDate(e.target.value)}
-                          style={{
-                            padding: "0.4rem",
-                            border: "1px solid #ccc",
-                            borderRadius: 4,
-                            width: 90,
-                          }}
-                        />
-                      </td>
-                      <td style={{ padding: "0.4rem 0.75rem" }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.35rem",
-                          }}
-                        >
-                          <OfficeExpenseTypeCombobox
-                            types={expenseTypes}
-                            selectedId={editOfficeExpenseTypeId}
-                            onSelectedIdChange={setEditOfficeExpenseTypeId}
-                            onRequestCreateNew={() => openTypeDialog("edit")}
-                            placeholder="Type (optional)"
-                            minInputWidth={120}
-                            inputStyle={{ padding: "0.4rem" }}
-                          />
-                          <button
-                            type="button"
-                            title="Edit type name"
-                            disabled={!editOfficeExpenseTypeId}
-                            onClick={() =>
-                              openRenameTypeDialog(editOfficeExpenseTypeId)
-                            }
+              tableRows.map((tableRow) => {
+                if (tableRow.kind === "expense") {
+                  const row = tableRow.data;
+                  const isEditing = row.id === editingId;
+                  if (isEditing) {
+                    return (
+                      <tr key={`e-${row.id}`} style={{ borderTop: "1px solid #eee" }}>
+                        <td style={{ padding: "0.4rem 0.75rem" }}>
+                          <input
+                            type="text"
+                            placeholder="dd/mm/yy"
+                            value={editDate}
+                            onChange={(e) => setEditDate(e.target.value)}
                             style={{
-                              flexShrink: 0,
-                              padding: "0.35rem",
+                              padding: "0.4rem",
                               border: "1px solid #ccc",
                               borderRadius: 4,
-                              background: "#fff",
-                              cursor: editOfficeExpenseTypeId
-                                ? "pointer"
-                                : "not-allowed",
-                              opacity: editOfficeExpenseTypeId ? 1 : 0.45,
-                              color: "#1a1a1a",
+                              width: 90,
+                            }}
+                          />
+                        </td>
+                        <td style={{ padding: "0.4rem 0.75rem" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.35rem",
                             }}
                           >
-                            <PencilIcon size={14} />
-                          </button>
-                        </div>
+                            <OfficeExpenseTypeCombobox
+                              types={expenseTypes}
+                              selectedId={editOfficeExpenseTypeId}
+                              onSelectedIdChange={setEditOfficeExpenseTypeId}
+                              onRequestCreateNew={() => openTypeDialog("edit")}
+                              placeholder="Type (optional)"
+                              minInputWidth={120}
+                              inputStyle={{ padding: "0.4rem" }}
+                            />
+                            <button
+                              type="button"
+                              title="Edit type name"
+                              disabled={!editOfficeExpenseTypeId}
+                              onClick={() =>
+                                openRenameTypeDialog(editOfficeExpenseTypeId)
+                              }
+                              style={{
+                                flexShrink: 0,
+                                padding: "0.35rem",
+                                border: "1px solid #ccc",
+                                borderRadius: 4,
+                                background: "#fff",
+                                cursor: editOfficeExpenseTypeId
+                                  ? "pointer"
+                                  : "not-allowed",
+                                opacity: editOfficeExpenseTypeId ? 1 : 0.45,
+                                color: "#1a1a1a",
+                              }}
+                            >
+                              <PencilIcon size={14} />
+                            </button>
+                          </div>
+                        </td>
+                        <td style={{ padding: "0.4rem 0.75rem" }} />
+                        <td
+                          style={{
+                            padding: "0.4rem 0.75rem",
+                            textAlign: "right",
+                          }}
+                        >
+                          <input
+                            type="number"
+                            step="1"
+                            value={editAmount}
+                            onChange={(e) => setEditAmount(e.target.value)}
+                            style={{
+                              padding: "0.4rem",
+                              border: "1px solid #ccc",
+                              borderRadius: 4,
+                              width: 90,
+                            }}
+                          />
+                        </td>
+                        <td style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
+                          {formatMoney(balanceMap.get(row.id) ?? 0)}
+                        </td>
+                        <td style={{ padding: "0.4rem 0.75rem" }}>
+                          <select
+                            value={editPaymentMethodId}
+                            onChange={(e) =>
+                              setEditPaymentMethodId(e.target.value)
+                            }
+                            style={{
+                              padding: "0.4rem",
+                              border: "1px solid #ccc",
+                              borderRadius: 4,
+                              minWidth: 120,
+                            }}
+                          >
+                            <option value="">Mode of payment</option>
+                            {paymentMethods.map((pm) => (
+                              <option key={pm.id} value={pm.id}>
+                                {pm.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td style={{ padding: "0.4rem 0.75rem" }}>
+                          <input
+                            value={editDesc}
+                            onChange={(e) => setEditDesc(e.target.value)}
+                            required
+                            style={{
+                              padding: "0.4rem",
+                              border: "1px solid #ccc",
+                              borderRadius: 4,
+                              minWidth: 140,
+                            }}
+                          />
+                        </td>
+                        <td style={{ padding: "0.4rem 0.75rem" }}>
+                          <div style={{ display: "flex", gap: "0.5rem" }}>
+                            <button
+                              type="button"
+                              onClick={saveEdit}
+                              style={{
+                                marginRight: 8,
+                                padding: "0.35rem 0.6rem",
+                                fontSize: "0.85rem",
+                                background: "#1a1a1a",
+                                color: "#fff",
+                                borderRadius: 4,
+                              }}
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEdit}
+                              style={{ fontSize: "0.85rem", color: "#666" }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  return (
+                    <tr key={`e-${row.id}`} style={{ borderTop: "1px solid #eee" }}>
+                      <td style={{ padding: "0.4rem 0.75rem" }}>
+                        {formatDate(row.date)}
                       </td>
+                      <td style={{ padding: "0.4rem 0.75rem", color: "#444" }}>
+                        {row.officeExpenseType?.name ?? "—"}
+                      </td>
+                      <td style={{ padding: "0.4rem 0.75rem" }} />
                       <td
                         style={{
                           padding: "0.4rem 0.75rem",
                           textAlign: "right",
                         }}
                       >
+                        {formatMoney(row.amount)}
+                      </td>
+                      <td style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
+                        {formatMoney(balanceMap.get(row.id) ?? 0)}
+                      </td>
+                      <td style={{ padding: "0.4rem 0.75rem" }}>
+                        {row.paymentMethod?.name ?? "—"}
+                      </td>
+                      <td style={{ padding: "0.4rem 0.75rem" }}>
+                        {row.description}
+                      </td>
+                      <td style={{ padding: "0.4rem 0.75rem" }}>
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                          <button
+                            type="button"
+                            onClick={() => startEdit(row)}
+                            style={{
+                              marginRight: 8,
+                              fontSize: "0.85rem",
+                              color: "#1a1a1a",
+                            }}
+                          >
+                            <PencilIcon size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteItem(row.id, row.description)}
+                            style={{ color: "#c00", fontSize: "0.85rem" }}
+                          >
+                            <TrashIcon size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
+                /* payable row */
+                const p = tableRow.data;
+                const isEditingP = editingPayableId === p.id;
+                if (isEditingP) {
+                  return (
+                    <tr key={`p-${p.id}`} style={{ borderTop: "1px solid #eee" }}>
+                      <td style={{ padding: "0.4rem 0.75rem" }}>
                         <input
-                          type="number"
-                          step="1"
-                          value={editAmount}
-                          onChange={(e) => setEditAmount(e.target.value)}
+                          value={editPayableDate}
+                          onChange={(e) => setEditPayableDate(e.target.value)}
                           style={{
                             padding: "0.4rem",
                             border: "1px solid #ccc",
@@ -1212,32 +1480,32 @@ export function OfficeExpenses() {
                           }}
                         />
                       </td>
-                      <td style={{ padding: "0.4rem 0.75rem" }}>
-                        <select
-                          value={editPaymentMethodId}
-                          onChange={(e) =>
-                            setEditPaymentMethodId(e.target.value)
-                          }
+                      <td style={{ padding: "0.4rem 0.75rem", color: "#444" }}>
+                        {p.officeExpenseType?.name ?? "—"}
+                      </td>
+                      <td style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
+                        <input
+                          type="number"
+                          step="any"
+                          value={editPayableAmount}
+                          onChange={(e) => setEditPayableAmount(e.target.value)}
                           style={{
                             padding: "0.4rem",
                             border: "1px solid #ccc",
                             borderRadius: 4,
-                            minWidth: 120,
+                            width: 90,
                           }}
-                        >
-                          <option value="">Mode of payment</option>
-                          {paymentMethods.map((pm) => (
-                            <option key={pm.id} value={pm.id}>
-                              {pm.name}
-                            </option>
-                          ))}
-                        </select>
+                        />
                       </td>
+                      <td style={{ padding: "0.4rem 0.75rem" }} />
+                      <td style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
+                        {formatMoney(balanceMap.get(p.id) ?? 0)}
+                      </td>
+                      <td style={{ padding: "0.4rem 0.75rem" }} />
                       <td style={{ padding: "0.4rem 0.75rem" }}>
                         <input
-                          value={editDesc}
-                          onChange={(e) => setEditDesc(e.target.value)}
-                          required
+                          value={editPayableName}
+                          onChange={(e) => setEditPayableName(e.target.value)}
                           style={{
                             padding: "0.4rem",
                             border: "1px solid #ccc",
@@ -1250,7 +1518,7 @@ export function OfficeExpenses() {
                         <div style={{ display: "flex", gap: "0.5rem" }}>
                           <button
                             type="button"
-                            onClick={saveEdit}
+                            onClick={() => saveEditPayable(p.officeExpenseTypeId)}
                             style={{
                               marginRight: 8,
                               padding: "0.35rem 0.6rem",
@@ -1264,7 +1532,7 @@ export function OfficeExpenses() {
                           </button>
                           <button
                             type="button"
-                            onClick={cancelEdit}
+                            onClick={cancelEditPayable}
                             style={{ fontSize: "0.85rem", color: "#666" }}
                           >
                             Cancel
@@ -1275,12 +1543,12 @@ export function OfficeExpenses() {
                   );
                 }
                 return (
-                  <tr key={row.id} style={{ borderTop: "1px solid #eee" }}>
+                  <tr key={`p-${p.id}`} style={{ borderTop: "1px solid #eee" }}>
                     <td style={{ padding: "0.4rem 0.75rem" }}>
-                      {formatDate(row.date)}
+                      {formatDate(p.date)}
                     </td>
                     <td style={{ padding: "0.4rem 0.75rem", color: "#444" }}>
-                      {row.officeExpenseType?.name ?? "—"}
+                      {p.officeExpenseType?.name ?? "—"}
                     </td>
                     <td
                       style={{
@@ -1288,19 +1556,21 @@ export function OfficeExpenses() {
                         textAlign: "right",
                       }}
                     >
-                      {formatMoney(row.amount)}
+                      {formatMoney(p.amount)}
                     </td>
-                    <td style={{ padding: "0.4rem 0.75rem" }}>
-                      {row.paymentMethod?.name ?? "—"}
+                    <td style={{ padding: "0.4rem 0.75rem" }} />
+                    <td style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
+                      {formatMoney(balanceMap.get(p.id) ?? 0)}
                     </td>
+                    <td style={{ padding: "0.4rem 0.75rem" }}>—</td>
                     <td style={{ padding: "0.4rem 0.75rem" }}>
-                      {row.description}
+                      {p.name}
                     </td>
                     <td style={{ padding: "0.4rem 0.75rem" }}>
                       <div style={{ display: "flex", gap: "0.5rem" }}>
                         <button
                           type="button"
-                          onClick={() => startEdit(row)}
+                          onClick={() => startEditPayable(p)}
                           style={{
                             marginRight: 8,
                             fontSize: "0.85rem",
@@ -1311,7 +1581,7 @@ export function OfficeExpenses() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => deleteItem(row.id, row.description)}
+                          onClick={() => deletePayable(p.officeExpenseTypeId, p.id)}
                           style={{ color: "#c00", fontSize: "0.85rem" }}
                         >
                           <TrashIcon size={14} />
@@ -1448,6 +1718,104 @@ export function OfficeExpenses() {
         </form>
       </div>
 
+      {/* ── Accounts Payable Section ── */}
+      <div
+        style={{
+          marginBottom: "1.5rem",
+        }}
+      >
+        <h2 style={{ margin: "0 0 0.75rem", fontSize: "1.1rem", fontWeight: 600 }}>
+          Accounts payable
+        </h2>
+
+        {/* Add payable row */}
+        <form
+          onSubmit={addPayable}
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "0.75rem",
+            alignItems: "flex-end",
+            marginBottom: "1rem",
+          }}
+        >
+          <select
+            value={payableTypeId}
+            onChange={(e) => setPayableTypeId(e.target.value)}
+            style={{
+              padding: "0.5rem",
+              border: "1px solid #ccc",
+              borderRadius: 4,
+              minWidth: 160,
+            }}
+          >
+            <option value="">Select expense type</option>
+            {expenseTypes.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+          <input
+            placeholder="Description"
+            value={payableName}
+            onChange={(e) => setPayableName(e.target.value)}
+            style={{
+              padding: "0.5rem",
+              border: "1px solid #ccc",
+              borderRadius: 4,
+              minWidth: 140,
+            }}
+          />
+          <input
+            type="number"
+            step="any"
+            placeholder="Amount"
+            value={payableAmount}
+            onChange={(e) => setPayableAmount(e.target.value)}
+            style={{
+              padding: "0.5rem",
+              border: "1px solid #ccc",
+              borderRadius: 4,
+              width: 90,
+            }}
+          />
+          <input
+            type="text"
+            placeholder="dd/mm/yy"
+            value={payableDate}
+            onChange={(e) => setPayableDate(e.target.value)}
+            style={{
+              padding: "0.5rem",
+              border: "1px solid #ccc",
+              borderRadius: 4,
+              width: 90,
+            }}
+          />
+          <button
+            type="submit"
+            disabled={!payableTypeId}
+            style={{
+              padding: "0.5rem 1rem",
+              background: payableTypeId ? "#1a1a1a" : "#999",
+              color: "#fff",
+              borderRadius: 6,
+              fontWeight: 500,
+              border: "none",
+              cursor: payableTypeId ? "pointer" : "not-allowed",
+            }}
+          >
+            Add
+          </button>
+        </form>
+
+        {payableError && (
+          <p style={{ color: "#c00", fontSize: "0.85rem", margin: "0 0 0.75rem" }}>
+            {payableError}
+          </p>
+        )}
+      </div>
+
       {renameTypeDialogOpen && (
         <div
           role="presentation"
@@ -1530,6 +1898,21 @@ export function OfficeExpenses() {
                   marginTop: "1.25rem",
                 }}
               >
+                <button
+                  type="button"
+                  onClick={deleteRenameType}
+                  style={{
+                    padding: "0.45rem 0.9rem",
+                    background: "#fff",
+                    color: "#c00",
+                    border: "1px solid #c00",
+                    borderRadius: 6,
+                    fontSize: "0.9rem",
+                    marginRight: "auto",
+                  }}
+                >
+                  Delete
+                </button>
                 <button
                   type="button"
                   onClick={closeRenameTypeDialog}
