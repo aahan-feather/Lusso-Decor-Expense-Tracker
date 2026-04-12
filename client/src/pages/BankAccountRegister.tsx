@@ -278,7 +278,7 @@ export function BankAccountRegister() {
               }}
             >
               <th style={cellPad}>Date</th>
-              <th style={cellPad}>Type</th>
+              <th style={{ ...cellPad, minWidth: 140 }}>Type</th>
               <th style={cellPad}>Description</th>
               <th style={{ ...cellPad, textAlign: "right", whiteSpace: "nowrap" }}>In</th>
               <th style={{ ...cellPad, textAlign: "right", whiteSpace: "nowrap" }}>Out</th>
