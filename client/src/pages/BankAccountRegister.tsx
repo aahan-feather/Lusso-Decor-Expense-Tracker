@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   api,
   type RegisterRow,
@@ -35,50 +35,6 @@ function sourceTypeLabel(t: RegisterRow["sourceType"]): string {
   }
 }
 
-function RegisterSourceLink({ row }: { row: RegisterRow }) {
-  const m = row.meta;
-  switch (row.sourceType) {
-    case "project_payment":
-    case "line_item":
-      return m?.projectId ? (
-        <Link
-          to={`/projects/${m.projectId}`}
-          style={{ color: "#1a1a1a", fontSize: "0.8125rem" }}
-        >
-          Open project
-        </Link>
-      ) : null;
-    case "vendor_payment":
-      return m?.vendorId ? (
-        <Link
-          to={`/vendors/${m.vendorId}`}
-          style={{ color: "#1a1a1a", fontSize: "0.8125rem" }}
-        >
-          Open vendor
-        </Link>
-      ) : null;
-    case "office_expense":
-      return (
-        <Link
-          to="/office-expenses"
-          style={{ color: "#1a1a1a", fontSize: "0.8125rem" }}
-        >
-          Office list
-        </Link>
-      );
-    case "inventory_expense":
-      return (
-        <Link
-          to="/inventory"
-          style={{ color: "#1a1a1a", fontSize: "0.8125rem" }}
-        >
-          Inventory list
-        </Link>
-      );
-    default:
-      return <span style={{ color: "#aaa" }}>—</span>;
-  }
-}
 
 export function BankAccountRegister() {
   const { id } = useParams<{ id: string }>();
@@ -322,12 +278,11 @@ export function BankAccountRegister() {
               }}
             >
               <th style={cellPad}>Date</th>
-              <th style={cellPad}>Type</th>
-              <th style={{ ...cellPad, textAlign: "right" }}>Out</th>
-              <th style={{ ...cellPad, textAlign: "right" }}>In</th>
-              <th style={{ ...cellPad, textAlign: "right" }}>Balance</th>
+              <th style={{ ...cellPad, minWidth: 140 }}>Type</th>
               <th style={cellPad}>Description</th>
-              <th style={cellPad}>Open</th>
+              <th style={{ ...cellPad, textAlign: "right", whiteSpace: "nowrap" }}>In</th>
+              <th style={{ ...cellPad, textAlign: "right", whiteSpace: "nowrap" }}>Out</th>
+              <th style={{ ...cellPad, textAlign: "right", whiteSpace: "nowrap" }}>Balance</th>
               <th style={{ ...cellPad, width: 80 }} />
             </tr>
           </thead>
@@ -335,7 +290,7 @@ export function BankAccountRegister() {
             {rows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={7}
                   style={{
                     ...cellPad,
                     padding: "1.25rem 0.75rem",
@@ -357,7 +312,7 @@ export function BankAccountRegister() {
                       key={`${row.sourceType}-${row.sourceId}`}
                       style={{ borderTop: "1px solid #eee" }}
                     >
-                      <td colSpan={8} style={cellPad}>
+                      <td colSpan={7} style={cellPad}>
                         <form
                           onSubmit={handleSaveEdit}
                           style={{
@@ -499,24 +454,22 @@ export function BankAccountRegister() {
                     <td style={{ ...cellPad, color: "#444" }}>
                       {sourceTypeLabel(row.sourceType)}
                     </td>
-                    <td style={{ ...cellPad, textAlign: "right" }}>
-                      {row.direction === "out" ? formatMoney(row.amount) : "—"}
-                    </td>
-                    <td style={{ ...cellPad, textAlign: "right" }}>
+                    <td style={{ ...cellPad, wordBreak: "break-word" }}>{row.label}</td>
+                    <td style={{ ...cellPad, textAlign: "right", whiteSpace: "nowrap" }}>
                       {row.direction === "in" ? formatMoney(row.amount) : "—"}
+                    </td>
+                    <td style={{ ...cellPad, textAlign: "right", whiteSpace: "nowrap" }}>
+                      {row.direction === "out" ? formatMoney(row.amount) : "—"}
                     </td>
                     <td
                       style={{
                         ...cellPad,
                         textAlign: "right",
                         fontWeight: 500,
+                        whiteSpace: "nowrap",
                       }}
                     >
                       {formatMoney(balance)}
-                    </td>
-                    <td style={cellPad}>{row.label}</td>
-                    <td style={cellPad}>
-                      <RegisterSourceLink row={row} />
                     </td>
                     <td style={cellPad}>
                       {row.sourceType === "bank_only" ? (
