@@ -175,6 +175,16 @@ export type OfficeExpenseType = {
   createdAt?: string;
 };
 
+export type OfficeExpenseTypePayable = {
+  id: string;
+  name: string;
+  amount: number;
+  date: string;
+  officeExpenseTypeId: string;
+  createdAt?: string;
+  officeExpenseType?: { id: string; name: string } | null;
+};
+
 export type OfficeExpense = {
   id: string;
   description: string;
@@ -324,6 +334,24 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
+    delete: (id: string) =>
+      request<void>(`/office-expense-types/${id}`, { method: "DELETE" }),
+    listAllPayables: () =>
+      request<OfficeExpenseTypePayable[]>("/office-expense-types/payables/all"),
+    listPayables: (typeId: string) =>
+      request<OfficeExpenseTypePayable[]>(`/office-expense-types/${typeId}/payables`),
+    createPayable: (typeId: string, data: { name: string; amount: number; date?: string }) =>
+      request<OfficeExpenseTypePayable>(`/office-expense-types/${typeId}/payables`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    updatePayable: (typeId: string, payableId: string, data: { name?: string; amount?: number; date?: string }) =>
+      request<OfficeExpenseTypePayable>(`/office-expense-types/${typeId}/payables/${payableId}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    deletePayable: (typeId: string, payableId: string) =>
+      request<void>(`/office-expense-types/${typeId}/payables/${payableId}`, { method: "DELETE" }),
   },
 
   officeExpenses: {

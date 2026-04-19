@@ -86,8 +86,22 @@ model OfficeExpenseType {
   createdAt DateTime @default(now())
 
   officeExpenses OfficeExpense[]
+  payables       OfficeExpenseTypePayable[]
 
   @@map("OfficeExpenseType")
+}
+
+model OfficeExpenseTypePayable {
+  id                  String   @id @default(cuid())
+  name                String
+  amount              Float
+  date                DateTime @default(now())
+  officeExpenseTypeId String
+  createdAt           DateTime @default(now())
+
+  officeExpenseType OfficeExpenseType @relation(fields: [officeExpenseTypeId], references: [id], onDelete: Cascade)
+
+  @@map("OfficeExpenseTypePayable")
 }
 
 model OfficeExpense {
