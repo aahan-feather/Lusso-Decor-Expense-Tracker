@@ -3,6 +3,73 @@ import { prisma } from "../lib/prisma.js";
 
 export const projectsRouter = Router();
 
+const lineItemInclude = {
+  vendor: { select: { id: true, name: true } },
+  paymentMethod: { select: { id: true, name: true, type: true } },
+  inventoryExpenseType: { select: { id: true, name: true } },
+} as const;
+
+function isPaymentMethodEmpty(
+  paymentMethodId: string | null | undefined,
+): boolean {
+  return paymentMethodId == null || String(paymentMethodId).trim() === "";
+}
+
+/** Ledger: no bank payment and not funded from inventory stock */
+function isLedger(
+  paymentMethodId: string | null | undefined,
+  inventoryExpenseTypeId: string | null | undefined,
+): boolean {
+  return (
+    isPaymentMethodEmpty(paymentMethodId) &&
+    !String(inventoryExpenseTypeId ?? "").trim()
+  );
+}
+
+async function syncInventoryDeductionFromLineItem(
+  projectName: string,
+  lineItem: {
+    id: string;
+    description: string;
+    amount: number;
+    date: Date;
+    inventoryExpenseTypeId: string | null;
+  },
+): Promise<void> {
+  const existing = await prisma.inventoryExpense.findUnique({
+    where: { lineItemId: lineItem.id },
+  });
+  const typeId = lineItem.inventoryExpenseTypeId?.trim() || null;
+  if (!typeId) {
+    if (existing) {
+      await prisma.inventoryExpense.delete({ where: { id: existing.id } });
+    }
+    return;
+  }
+  const description = `${projectName} — ${lineItem.description.trim()}`;
+  const amount = -Math.abs(lineItem.amount);
+  const base = {
+    description,
+    amount,
+    date: lineItem.date,
+    inventoryExpenseTypeId: typeId,
+    paymentMethodId: null as null,
+  };
+  if (existing) {
+    await prisma.inventoryExpense.update({
+      where: { id: existing.id },
+      data: base,
+    });
+  } else {
+    await prisma.inventoryExpense.create({
+      data: {
+        ...base,
+        lineItemId: lineItem.id,
+      },
+    });
+  }
+}
+
 projectsRouter.get("/", async (_req, res) => {
   try {
     const projects = await prisma.project.findMany({
@@ -81,10 +148,7 @@ projectsRouter.get("/:id", async (req, res) => {
       where: { id: req.params.id },
       include: {
         lineItems: {
-          include: {
-            vendor: { select: { id: true, name: true } },
-            paymentMethod: { select: { id: true, name: true, type: true } },
-          },
+          include: lineItemInclude,
         },
         projectPayments: {
           include: {
@@ -157,24 +221,28 @@ projectsRouter.delete("/:id", async (req, res) => {
   }
 });
 
-// Ledger = no payment method (null or empty). Only then do we sync to vendor side.
-function isLedger(paymentMethodId: string | null | undefined): boolean {
-  return paymentMethodId == null || String(paymentMethodId).trim() === "";
-}
-
 // Line items
 projectsRouter.post("/:id/line-items", async (req, res) => {
   try {
-    const { description, amount, date, vendorId, rate, qty, paymentMethodId } =
-      req.body as {
-        description: string;
-        amount?: number;
-        date?: string;
-        vendorId?: string;
-        rate?: number;
-        qty?: number;
-        paymentMethodId?: string | null;
-      };
+    const {
+      description,
+      amount,
+      date,
+      vendorId,
+      rate,
+      qty,
+      paymentMethodId,
+      inventoryExpenseTypeId,
+    } = req.body as {
+      description: string;
+      amount?: number;
+      date?: string;
+      vendorId?: string;
+      rate?: number;
+      qty?: number;
+      paymentMethodId?: string | null;
+      inventoryExpenseTypeId?: string | null;
+    };
     if (!description?.trim()) {
       return res.status(400).json({ error: "Description is required" });
     }
@@ -189,6 +257,18 @@ projectsRouter.post("/:id/line-items", async (req, res) => {
         .status(400)
         .json({ error: "Amount or both rate and qty are required" });
     }
+    const invTypeId =
+      inventoryExpenseTypeId != null &&
+      String(inventoryExpenseTypeId).trim() !== ""
+        ? String(inventoryExpenseTypeId).trim()
+        : null;
+    const finalPaymentMethodId = invTypeId
+      ? null
+      : paymentMethodId !== undefined
+        ? paymentMethodId?.trim() || null
+        : null;
+    const finalInventoryTypeId = invTypeId;
+
     const item = await prisma.lineItem.create({
       data: {
         projectId: req.params.id,
@@ -198,18 +278,30 @@ projectsRouter.post("/:id/line-items", async (req, res) => {
         ...(qty != null && { qty: Number(qty) }),
         ...(date && { date: new Date(date) }),
         ...(vendorId && { vendorId: vendorId.trim() || undefined }),
-        ...(paymentMethodId !== undefined && {
-          paymentMethodId: paymentMethodId?.trim() || null,
-        }),
+        paymentMethodId: finalPaymentMethodId,
+        inventoryExpenseTypeId: finalInventoryTypeId,
       },
-      include: {
-        vendor: { select: { id: true, name: true } },
-        paymentMethod: { select: { id: true, name: true, type: true } },
-      },
+      include: lineItemInclude,
     });
+    const project = await prisma.project.findUnique({
+      where: { id: req.params.id },
+      select: { name: true },
+    });
+    if (project) {
+      await syncInventoryDeductionFromLineItem(project.name, {
+        id: item.id,
+        description: item.description,
+        amount: item.amount,
+        date: item.date,
+        inventoryExpenseTypeId: item.inventoryExpenseTypeId,
+      });
+    }
     // When ledger + vendor, add to vendor side
     const effectiveVendorId = vendorId?.trim();
-    if (isLedger(paymentMethodId) && effectiveVendorId) {
+    if (
+      isLedger(item.paymentMethodId, item.inventoryExpenseTypeId) &&
+      effectiveVendorId
+    ) {
       await prisma.vendorItem.create({
         data: {
           vendorId: effectiveVendorId,
@@ -229,21 +321,48 @@ projectsRouter.post("/:id/line-items", async (req, res) => {
 
 projectsRouter.patch("/:projectId/line-items/:itemId", async (req, res) => {
   try {
-    const { description, amount, date, vendorId, rate, qty, paymentMethodId } =
-      req.body as {
-        description?: string;
-        amount?: number;
-        date?: string;
-        vendorId?: string | null;
-        rate?: number | null;
-        qty?: number | null;
-        paymentMethodId?: string | null;
-      };
+    const {
+      description,
+      amount,
+      date,
+      vendorId,
+      rate,
+      qty,
+      paymentMethodId,
+      inventoryExpenseTypeId,
+    } = req.body as {
+      description?: string;
+      amount?: number;
+      date?: string;
+      vendorId?: string | null;
+      rate?: number | null;
+      qty?: number | null;
+      paymentMethodId?: string | null;
+      inventoryExpenseTypeId?: string | null;
+    };
     const existing = await prisma.lineItem.findFirst({
       where: { id: req.params.itemId, projectId: req.params.projectId },
     });
     if (!existing)
       return res.status(404).json({ error: "Line item not found" });
+
+    let nextInventoryTypeId = existing.inventoryExpenseTypeId;
+    let nextPaymentMethodId = existing.paymentMethodId;
+    if (inventoryExpenseTypeId !== undefined) {
+      nextInventoryTypeId =
+        inventoryExpenseTypeId != null &&
+        String(inventoryExpenseTypeId).trim() !== ""
+          ? String(inventoryExpenseTypeId).trim()
+          : null;
+    }
+    if (paymentMethodId !== undefined) {
+      nextPaymentMethodId = paymentMethodId?.trim() || null;
+      nextInventoryTypeId = null;
+    }
+    if (inventoryExpenseTypeId !== undefined && nextInventoryTypeId) {
+      nextPaymentMethodId = null;
+    }
+
     const hasRateQty = rate != null && qty != null;
     const totalAmount = hasRateQty
       ? Number(rate) * Number(qty)
@@ -259,17 +378,26 @@ projectsRouter.patch("/:projectId/line-items/:itemId", async (req, res) => {
         ...(qty !== undefined && { qty: qty == null ? null : Number(qty) }),
         ...(date !== undefined && { date: new Date(date) }),
         ...(vendorId !== undefined && { vendorId: vendorId?.trim() || null }),
-        ...(paymentMethodId !== undefined && {
-          paymentMethodId: paymentMethodId?.trim() || null,
-        }),
+        paymentMethodId: nextPaymentMethodId,
+        inventoryExpenseTypeId: nextInventoryTypeId,
       },
-      include: {
-        vendor: { select: { id: true, name: true } },
-        paymentMethod: { select: { id: true, name: true, type: true } },
-      },
+      include: lineItemInclude,
     });
-    // Sync vendor side: only ledger (no payment method) items appear on vendor
-    const nowLedger = isLedger(item.paymentMethodId);
+    const project = await prisma.project.findUnique({
+      where: { id: req.params.projectId },
+      select: { name: true },
+    });
+    if (project) {
+      await syncInventoryDeductionFromLineItem(project.name, {
+        id: item.id,
+        description: item.description,
+        amount: item.amount,
+        date: item.date,
+        inventoryExpenseTypeId: item.inventoryExpenseTypeId,
+      });
+    }
+    // Sync vendor side: only ledger (no payment method, not inventory) items appear on vendor
+    const nowLedger = isLedger(item.paymentMethodId, item.inventoryExpenseTypeId);
     const newVendorId = item.vendorId?.trim() ?? null;
     const existingVendorItem = await prisma.vendorItem.findFirst({
       where: { lineItemId: req.params.itemId },

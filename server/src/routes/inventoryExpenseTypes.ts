@@ -34,3 +34,28 @@ inventoryExpenseTypesRouter.post("/", async (req, res) => {
     res.status(500).json({ error: "Failed to create inventory type" });
   }
 });
+
+inventoryExpenseTypesRouter.patch("/:id", async (req, res) => {
+  try {
+    const { name } = req.body as { name?: string };
+    if (!name?.trim()) {
+      return res.status(400).json({ error: "Name is required" });
+    }
+    const type = await prisma.inventoryExpenseType.update({
+      where: { id: req.params.id },
+      data: { name: name.trim() },
+    });
+    res.json(type);
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError) {
+      if (e.code === "P2025") {
+        return res.status(404).json({ error: "Type not found" });
+      }
+      if (e.code === "P2002") {
+        return res.status(409).json({ error: "A type with this name already exists" });
+      }
+    }
+    console.error(e);
+    res.status(500).json({ error: "Failed to update inventory type" });
+  }
+});

@@ -31,13 +31,20 @@ inventoryExpensesRouter.post("/", async (req, res) => {
     if (!description?.trim() || amount == null) {
       return res.status(400).json({ error: "Description and amount are required" });
     }
+    const typeId =
+      inventoryExpenseTypeId != null && String(inventoryExpenseTypeId).trim() !== ""
+        ? String(inventoryExpenseTypeId).trim()
+        : null;
+    if (!typeId) {
+      return res.status(400).json({ error: "Inventory item is required" });
+    }
     const item = await prisma.inventoryExpense.create({
       data: {
         description: description.trim(),
         amount: Number(amount),
         ...(date && { date: new Date(date) }),
         paymentMethodId: paymentMethodId?.trim() ? paymentMethodId.trim() : null,
-        inventoryExpenseTypeId: inventoryExpenseTypeId?.trim() ? inventoryExpenseTypeId.trim() : null,
+        inventoryExpenseTypeId: typeId,
       },
       include: {
         paymentMethod: { select: { id: true, name: true, type: true } },
@@ -62,6 +69,12 @@ inventoryExpensesRouter.patch("/:id", async (req, res) => {
     };
     const existing = await prisma.inventoryExpense.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ error: "Inventory entry not found" });
+    if (existing.lineItemId) {
+      return res.status(400).json({
+        error:
+          "This row is project usage (from a project line item). Edit or remove it from the project expense instead.",
+      });
+    }
 
     const item = await prisma.inventoryExpense.update({
       where: { id: req.params.id },
@@ -90,6 +103,16 @@ inventoryExpensesRouter.patch("/:id", async (req, res) => {
 
 inventoryExpensesRouter.delete("/:id", async (req, res) => {
   try {
+    const existing = await prisma.inventoryExpense.findUnique({
+      where: { id: req.params.id },
+    });
+    if (!existing) return res.status(404).json({ error: "Inventory entry not found" });
+    if (existing.lineItemId) {
+      return res.status(400).json({
+        error:
+          "This row is project usage (from a project line item). Remove the expense from the project instead.",
+      });
+    }
     await prisma.inventoryExpense.delete({ where: { id: req.params.id } });
     res.status(204).send();
   } catch (e) {

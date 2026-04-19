@@ -5,6 +5,7 @@ import {
   type ExpensesAndPaymentsProject,
   type Vendor,
   type PaymentMethod,
+  type InventoryExpenseType,
 } from "../api";
 import { ProjectExpenseLedger } from "./projectLineItemsShared";
 
@@ -16,6 +17,9 @@ export function ProjectLineItemsDetail() {
   );
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [inventoryTypes, setInventoryTypes] = useState<InventoryExpenseType[]>(
+    [],
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,6 +43,10 @@ export function ProjectLineItemsDetail() {
     api.paymentMethods
       .list()
       .then(setPaymentMethods)
+      .catch(() => {});
+    api.inventoryExpenseTypes
+      .list()
+      .then(setInventoryTypes)
       .catch(() => {});
   }, [projectId]);
 
@@ -117,6 +125,7 @@ export function ProjectLineItemsDetail() {
           project={project}
           vendors={vendors}
           paymentMethods={paymentMethods}
+          inventoryTypes={inventoryTypes}
           onRefresh={refresh}
           onError={setError}
         />

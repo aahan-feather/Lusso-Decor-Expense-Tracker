@@ -12,6 +12,8 @@ lineItemsRouter.get("/", async (req, res) => {
       include: {
         project: { select: { id: true, name: true } },
         vendor: { select: { id: true, name: true } },
+        paymentMethod: { select: { id: true, name: true, type: true } },
+        inventoryExpenseType: { select: { id: true, name: true } },
       },
     });
     res.json(items);

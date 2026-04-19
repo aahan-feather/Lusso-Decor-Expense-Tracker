@@ -13,6 +13,7 @@ expensesAndPaymentsRouter.get("/", async (_req, res) => {
           include: {
             vendor: { select: { id: true, name: true } },
             paymentMethod: { select: { id: true, name: true, type: true } },
+            inventoryExpenseType: { select: { id: true, name: true } },
           },
         },
         projectPayments: {

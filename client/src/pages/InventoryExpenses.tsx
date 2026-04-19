@@ -1,4 +1,14 @@
-import { useEffect, useState } from "react";
+import {
+  useFloating,
+  autoUpdate,
+  offset,
+  flip,
+  shift,
+  size,
+  FloatingPortal,
+} from "@floating-ui/react";
+import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import {
   api,
   type InventoryExpense,
@@ -14,10 +24,254 @@ import {
 } from "../utils/format";
 import { PencilIcon, TrashIcon } from "lucide-react";
 
-const ADD_NEW_TYPE_VALUE = "__add_new_type__";
+type InventoryExpenseTypeComboboxProps = {
+  types: InventoryExpenseType[];
+  selectedId: string;
+  onSelectedIdChange: (id: string) => void;
+  onRequestCreateNew: () => void;
+  placeholder?: string;
+  inputStyle?: CSSProperties;
+  minInputWidth?: number;
+};
+
+function InventoryExpenseTypeCombobox({
+  types,
+  selectedId,
+  onSelectedIdChange,
+  onRequestCreateNew,
+  placeholder = "Choose Item",
+  inputStyle,
+  minInputWidth = 140,
+}: InventoryExpenseTypeComboboxProps) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const blurCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { refs, floatingStyles } = useFloating({
+    open,
+    placement: "bottom-start",
+    whileElementsMounted: autoUpdate,
+    middleware: [
+      offset(4),
+      flip({ fallbackPlacements: ["top-start"] }),
+      shift({ padding: 8 }),
+      size({
+        apply({ rects, elements }) {
+          Object.assign(elements.floating.style, {
+            width: `${rects.reference.width}px`,
+          });
+        },
+      }),
+    ],
+  });
+
+  useEffect(() => {
+    if (!selectedId) {
+      setQuery("");
+      return;
+    }
+    const t = types.find((x) => x.id === selectedId);
+    if (t) setQuery(t.name);
+  }, [selectedId, types]);
+
+  useEffect(() => {
+    const onDocMouseDown = (ev: MouseEvent) => {
+      const target = ev.target as Node;
+      const refEl = refs.reference.current;
+      if (
+        refEl &&
+        refEl instanceof HTMLElement &&
+        refEl.contains(target)
+      )
+        return;
+      if (refs.floating.current?.contains(target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, []);
+
+  const q = query.trim().toLowerCase();
+  const filtered = types.filter((t) =>
+    q ? t.name.toLowerCase().includes(q) : true,
+  );
+
+  const pick = (t: InventoryExpenseType) => {
+    onSelectedIdChange(t.id);
+    setQuery(t.name);
+    setOpen(false);
+  };
+
+  const scheduleClose = () => {
+    if (blurCloseTimer.current) clearTimeout(blurCloseTimer.current);
+    blurCloseTimer.current = setTimeout(() => setOpen(false), 150);
+  };
+
+  const cancelClose = () => {
+    if (blurCloseTimer.current) {
+      clearTimeout(blurCloseTimer.current);
+      blurCloseTimer.current = null;
+    }
+  };
+
+  return (
+    <div
+      ref={refs.setReference}
+      style={{
+        position: "relative",
+        flex: 1,
+        minWidth: minInputWidth,
+      }}
+    >
+      <input
+        type="text"
+        autoComplete="off"
+        placeholder={placeholder}
+        value={query}
+        onChange={(e) => {
+          const v = e.target.value;
+          setQuery(v);
+          setOpen(true);
+          const cur = types.find((x) => x.id === selectedId);
+          if (selectedId && cur && v !== cur.name) onSelectedIdChange("");
+          if (!v.trim()) onSelectedIdChange("");
+        }}
+        onFocus={() => {
+          cancelClose();
+          setOpen(true);
+        }}
+        onBlur={() => {
+          scheduleClose();
+          const trimmed = query.trim();
+          if (!trimmed) {
+            onSelectedIdChange("");
+            return;
+          }
+          const cur = selectedId
+            ? types.find((x) => x.id === selectedId)
+            : undefined;
+          if (cur && cur.name.toLowerCase() === trimmed.toLowerCase()) return;
+          const exact = types.find(
+            (t) => t.name.toLowerCase() === trimmed.toLowerCase(),
+          );
+          if (exact) onSelectedIdChange(exact.id);
+          else onSelectedIdChange("");
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.stopPropagation();
+            setOpen(false);
+          }
+        }}
+        style={{
+          width: "100%",
+          padding: "0.5rem",
+          border: "1px solid #ccc",
+          borderRadius: 4,
+          boxSizing: "border-box",
+          ...inputStyle,
+        }}
+      />
+      {open && (
+        <FloatingPortal>
+          <ul
+            ref={refs.setFloating}
+            role="listbox"
+            style={{
+              ...floatingStyles,
+              zIndex: 200,
+              padding: 0,
+              margin: 0,
+              listStyle: "none",
+              maxHeight: 220,
+              overflowY: "auto",
+              background: "#fff",
+              border: "1px solid #ccc",
+              borderRadius: 4,
+              boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+            }}
+          >
+            {filtered.length === 0 ? (
+              <li
+                style={{
+                  padding: "0.5rem 0.65rem",
+                  fontSize: "0.85rem",
+                  color: "#666",
+                }}
+              >
+                No matching items
+              </li>
+            ) : (
+              filtered.map((t) => (
+                <li key={t.id}>
+                  <button
+                    type="button"
+                    role="option"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => pick(t)}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "0.45rem 0.65rem",
+                      border: "none",
+                      background: "transparent",
+                      fontSize: "0.875rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {t.name}
+                  </button>
+                </li>
+              ))
+            )}
+            <li
+              style={{
+                borderTop: "1px solid #eee",
+              }}
+            >
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setOpen(false);
+                  onRequestCreateNew();
+                }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "0.45rem 0.65rem",
+                  border: "none",
+                  background: "#f8f8f8",
+                  fontSize: "0.875rem",
+                  cursor: "pointer",
+                  color: "#1a1a1a",
+                }}
+              >
+                + Add new item…
+              </button>
+            </li>
+          </ul>
+        </FloatingPortal>
+      )}
+    </div>
+  );
+}
 
 function dateKey(iso: string): string {
   return iso.slice(0, 10);
+}
+
+function sumPurchased(rows: InventoryExpense[]): number {
+  return rows.reduce((s, i) => s + (i.amount > 0 ? i.amount : 0), 0);
+}
+
+function sumUsed(rows: InventoryExpense[]): number {
+  return rows.reduce(
+    (s, i) => s + (i.amount < 0 ? Math.abs(i.amount) : 0),
+    0,
+  );
 }
 
 export function InventoryExpenses() {
@@ -40,6 +294,11 @@ export function InventoryExpenses() {
     "manual",
   );
   const [typeDialogError, setTypeDialogError] = useState<string | null>(null);
+
+  const [renameTypeDialogOpen, setRenameTypeDialogOpen] = useState(false);
+  const [renameTypeId, setRenameTypeId] = useState<string | null>(null);
+  const [renameTypeName, setRenameTypeName] = useState("");
+  const [renameTypeError, setRenameTypeError] = useState<string | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDesc, setEditDesc] = useState("");
@@ -112,6 +371,52 @@ export function InventoryExpenses() {
     }
   };
 
+  const openRenameTypeDialog = (typeId: string) => {
+    const t = inventoryTypes.find((x) => x.id === typeId);
+    if (!t) return;
+    setRenameTypeId(typeId);
+    setRenameTypeName(t.name);
+    setRenameTypeError(null);
+    setRenameTypeDialogOpen(true);
+  };
+
+  const closeRenameTypeDialog = () => {
+    setRenameTypeDialogOpen(false);
+    setRenameTypeId(null);
+    setRenameTypeName("");
+    setRenameTypeError(null);
+  };
+
+  const submitRenameType = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!renameTypeId || !renameTypeName.trim()) return;
+    try {
+      setRenameTypeError(null);
+      await api.inventoryExpenseTypes.update(renameTypeId, {
+        name: renameTypeName.trim(),
+      });
+      await loadTypes();
+      await load();
+      closeRenameTypeDialog();
+    } catch (err) {
+      setRenameTypeError((err as Error).message);
+    }
+  };
+
+  useEffect(() => {
+    if (!renameTypeDialogOpen) return;
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") {
+        setRenameTypeDialogOpen(false);
+        setRenameTypeId(null);
+        setRenameTypeName("");
+        setRenameTypeError(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [renameTypeDialogOpen]);
+
   useEffect(() => {
     if (!typeDialogOpen) return;
     const onKey = (ev: KeyboardEvent) => {
@@ -128,6 +433,10 @@ export function InventoryExpenses() {
   const addItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualDesc.trim() || manualAmount === "") return;
+    if (!manualInventoryExpenseTypeId.trim()) {
+      setError("Choose an inventory item.");
+      return;
+    }
     try {
       setError(null);
       const dateISO = manualDate
@@ -138,7 +447,7 @@ export function InventoryExpenses() {
         amount: parseFloat(manualAmount),
         date: dateISO,
         paymentMethodId: manualPaymentMethodId.trim() || null,
-        inventoryExpenseTypeId: manualInventoryExpenseTypeId.trim() || null,
+        inventoryExpenseTypeId: manualInventoryExpenseTypeId.trim(),
       });
       setManualDesc("");
       setManualAmount("");
@@ -184,6 +493,10 @@ export function InventoryExpenses() {
   const saveEdit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     if (!editingId || !editDesc.trim() || editAmount === "") return;
+    if (!editInventoryExpenseTypeId.trim()) {
+      setError("Choose an inventory item.");
+      return;
+    }
     try {
       setError(null);
       const dateISO = editDate
@@ -194,7 +507,7 @@ export function InventoryExpenses() {
         amount: parseFloat(editAmount),
         date: dateISO,
         paymentMethodId: editPaymentMethodId.trim() || null,
-        inventoryExpenseTypeId: editInventoryExpenseTypeId.trim() || null,
+        inventoryExpenseTypeId: editInventoryExpenseTypeId.trim(),
       });
       cancelEdit();
       load();
@@ -206,6 +519,8 @@ export function InventoryExpenses() {
   if (loading && items.length === 0) return <p>Loading…</p>;
 
   const totalAll = items.reduce((s, i) => s + i.amount, 0);
+  const totalPurchasedAll = sumPurchased(items);
+  const totalUsedAll = sumUsed(items);
 
   const expenseMinNum = expenseMin === "" ? null : parseFloat(expenseMin);
   const expenseMaxNum = expenseMax === "" ? null : parseFloat(expenseMax);
@@ -237,6 +552,8 @@ export function InventoryExpenses() {
   });
 
   const totalFiltered = filtered.reduce((s, i) => s + i.amount, 0);
+  const totalPurchasedFiltered = sumPurchased(filtered);
+  const totalUsedFiltered = sumUsed(filtered);
 
   const hasActiveFilters =
     dateFrom ||
@@ -276,29 +593,98 @@ export function InventoryExpenses() {
             <div
               style={{
                 display: "flex",
-                gap: "0.5rem",
-                justifyContent: "space-between",
-                minWidth: 200,
+                flexDirection: "column",
+                gap: "0.2rem",
+                alignItems: "flex-end",
+                fontSize: "0.9rem",
               }}
             >
-              <span>Total (all)</span>
-              <span style={{ fontWeight: 600 }}>{formatMoney(totalAll)}</span>
-            </div>
-            {hasActiveFilters && (
               <div
                 style={{
                   display: "flex",
                   gap: "0.5rem",
                   justifyContent: "space-between",
-                  minWidth: 200,
+                  minWidth: 220,
+                }}
+              >
+                <span>Purchased (all)</span>
+                <span style={{ fontWeight: 600 }}>
+                  {formatMoney(totalPurchasedAll)}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "0.5rem",
+                  justifyContent: "space-between",
+                  minWidth: 220,
+                }}
+              >
+                <span>Used (all)</span>
+                <span style={{ fontWeight: 600 }}>{formatMoney(totalUsedAll)}</span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "0.5rem",
+                  justifyContent: "space-between",
+                  minWidth: 220,
+                }}
+              >
+                <span>Net (all)</span>
+                <span style={{ fontWeight: 600 }}>{formatMoney(totalAll)}</span>
+              </div>
+            </div>
+            {hasActiveFilters && (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.2rem",
+                  alignItems: "flex-end",
                   fontSize: "0.9rem",
                   color: "#555",
                 }}
               >
-                <span>Filtered subtotal</span>
-                <span style={{ fontWeight: 600 }}>
-                  {formatMoney(totalFiltered)}
-                </span>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "0.5rem",
+                    justifyContent: "space-between",
+                    minWidth: 220,
+                  }}
+                >
+                  <span>Purchased (filtered)</span>
+                  <span style={{ fontWeight: 600 }}>
+                    {formatMoney(totalPurchasedFiltered)}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "0.5rem",
+                    justifyContent: "space-between",
+                    minWidth: 220,
+                  }}
+                >
+                  <span>Used (filtered)</span>
+                  <span style={{ fontWeight: 600 }}>
+                    {formatMoney(totalUsedFiltered)}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "0.5rem",
+                    justifyContent: "space-between",
+                    minWidth: 220,
+                  }}
+                >
+                  <span>Net (filtered)</span>
+                  <span style={{ fontWeight: 600 }}>
+                    {formatMoney(totalFiltered)}
+                  </span>
+                </div>
               </div>
             )}
           </div>
@@ -446,7 +832,7 @@ export function InventoryExpenses() {
           <label
             style={{ fontSize: "0.85rem", fontWeight: 500, color: "#555" }}
           >
-            Type
+            Inventory item
           </label>
           <select
             value={typeFilter}
@@ -612,7 +998,7 @@ export function InventoryExpenses() {
                 color: "#333",
               }}
             >
-              Type:{" "}
+              Item:{" "}
               {inventoryTypes.find((t) => t.id === typeFilter)?.name ?? typeFilter}
               <span style={{ opacity: 0.7 }}>×</span>
             </button>
@@ -651,9 +1037,12 @@ export function InventoryExpenses() {
               }}
             >
               <th style={{ padding: "0.4rem 0.75rem" }}>Date</th>
-              <th style={{ padding: "0.4rem 0.75rem" }}>Type</th>
+              <th style={{ padding: "0.4rem 0.75rem" }}>Inventory item</th>
               <th style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
-                Amount
+                Purchased
+              </th>
+              <th style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
+                Used
               </th>
               <th style={{ padding: "0.4rem 0.75rem" }}>Payment mode</th>
               <th style={{ padding: "0.4rem 0.75rem" }}>Description</th>
@@ -664,7 +1053,7 @@ export function InventoryExpenses() {
             {filtered.length === 0 ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   style={{
                     padding: "1.25rem 0.75rem",
                     textAlign: "center",
@@ -697,35 +1086,48 @@ export function InventoryExpenses() {
                         />
                       </td>
                       <td style={{ padding: "0.4rem 0.75rem" }}>
-                        <select
-                          value={editInventoryExpenseTypeId}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            if (v === ADD_NEW_TYPE_VALUE) {
-                              openTypeDialog("edit");
-                              return;
-                            }
-                            setEditInventoryExpenseTypeId(v);
-                          }}
+                        <div
                           style={{
-                            padding: "0.4rem",
-                            border: "1px solid #ccc",
-                            borderRadius: 4,
-                            minWidth: 120,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.35rem",
                           }}
                         >
-                          <option value="">—</option>
-                          {inventoryTypes.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.name}
-                            </option>
-                          ))}
-                          <option value={ADD_NEW_TYPE_VALUE}>
-                            + Add new type…
-                          </option>
-                        </select>
+                          <InventoryExpenseTypeCombobox
+                            types={inventoryTypes}
+                            selectedId={editInventoryExpenseTypeId}
+                            onSelectedIdChange={setEditInventoryExpenseTypeId}
+                            onRequestCreateNew={() => openTypeDialog("edit")}
+                            placeholder="Choose Item"
+                            minInputWidth={120}
+                            inputStyle={{ padding: "0.4rem" }}
+                          />
+                          <button
+                            type="button"
+                            title="Edit item name"
+                            disabled={!editInventoryExpenseTypeId}
+                            onClick={() =>
+                              openRenameTypeDialog(editInventoryExpenseTypeId)
+                            }
+                            style={{
+                              flexShrink: 0,
+                              padding: "0.35rem",
+                              border: "1px solid #ccc",
+                              borderRadius: 4,
+                              background: "#fff",
+                              cursor: editInventoryExpenseTypeId
+                                ? "pointer"
+                                : "not-allowed",
+                              opacity: editInventoryExpenseTypeId ? 1 : 0.45,
+                              color: "#1a1a1a",
+                            }}
+                          >
+                            <PencilIcon size={14} />
+                          </button>
+                        </div>
                       </td>
                       <td
+                        colSpan={2}
                         style={{
                           padding: "0.4rem 0.75rem",
                           textAlign: "right",
@@ -736,11 +1138,12 @@ export function InventoryExpenses() {
                           step="1"
                           value={editAmount}
                           onChange={(e) => setEditAmount(e.target.value)}
+                          title="Positive = purchased, negative = used"
                           style={{
                             padding: "0.4rem",
                             border: "1px solid #ccc",
                             borderRadius: 4,
-                            width: 90,
+                            width: 120,
                           }}
                         />
                       </td>
@@ -820,7 +1223,17 @@ export function InventoryExpenses() {
                         textAlign: "right",
                       }}
                     >
-                      {formatMoney(row.amount)}
+                      {row.amount > 0 ? formatMoney(row.amount) : "—"}
+                    </td>
+                    <td
+                      style={{
+                        padding: "0.4rem 0.75rem",
+                        textAlign: "right",
+                      }}
+                    >
+                      {row.amount < 0
+                        ? formatMoney(Math.abs(row.amount))
+                        : "—"}
                     </td>
                     <td style={{ padding: "0.4rem 0.75rem" }}>
                       {row.paymentMethod?.name ?? "—"}
@@ -829,26 +1242,35 @@ export function InventoryExpenses() {
                       {row.description}
                     </td>
                     <td style={{ padding: "0.4rem 0.75rem" }}>
-                      <div style={{ display: "flex", gap: "0.5rem" }}>
-                        <button
-                          type="button"
-                          onClick={() => startEdit(row)}
-                          style={{
-                            marginRight: 8,
-                            fontSize: "0.85rem",
-                            color: "#1a1a1a",
-                          }}
+                      {row.lineItemId ? (
+                        <span
+                          style={{ fontSize: "0.75rem", color: "#888" }}
+                          title="Edit or remove this from the project expense screen."
                         >
-                          <PencilIcon size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => deleteItem(row.id, row.description)}
-                          style={{ color: "#c00", fontSize: "0.85rem" }}
-                        >
-                          <TrashIcon size={14} />
-                        </button>
-                      </div>
+                          Project
+                        </span>
+                      ) : (
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                          <button
+                            type="button"
+                            onClick={() => startEdit(row)}
+                            style={{
+                              marginRight: 8,
+                              fontSize: "0.85rem",
+                              color: "#1a1a1a",
+                            }}
+                          >
+                            <PencilIcon size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteItem(row.id, row.description)}
+                            style={{ color: "#c00", fontSize: "0.85rem" }}
+                          >
+                            <TrashIcon size={14} />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -887,33 +1309,45 @@ export function InventoryExpenses() {
               width: 90,
             }}
           />
-          <select
-            value={manualInventoryExpenseTypeId}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v === ADD_NEW_TYPE_VALUE) {
-                openTypeDialog("manual");
-                return;
-              }
-              setManualInventoryExpenseTypeId(v);
-            }}
+          <div
             style={{
-              padding: "0.5rem",
-              border: "1px solid #ccc",
-              borderRadius: 4,
-              minWidth: 140,
+              display: "flex",
+              alignItems: "flex-end",
+              gap: "0.35rem",
+              minWidth: 200,
             }}
           >
-            <option value="">Type (optional)</option>
-            {inventoryTypes.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-            <option value={ADD_NEW_TYPE_VALUE}>+ Add new type…</option>
-          </select>
+            <InventoryExpenseTypeCombobox
+              types={inventoryTypes}
+              selectedId={manualInventoryExpenseTypeId}
+              onSelectedIdChange={setManualInventoryExpenseTypeId}
+              onRequestCreateNew={() => openTypeDialog("manual")}
+              placeholder="Choose Item"
+              minInputWidth={160}
+            />
+            <button
+              type="button"
+              title="Edit item name"
+              disabled={!manualInventoryExpenseTypeId}
+              onClick={() =>
+                openRenameTypeDialog(manualInventoryExpenseTypeId)
+              }
+              style={{
+                flexShrink: 0,
+                padding: "0.5rem",
+                border: "1px solid #ccc",
+                borderRadius: 4,
+                background: "#fff",
+                cursor: manualInventoryExpenseTypeId ? "pointer" : "not-allowed",
+                opacity: manualInventoryExpenseTypeId ? 1 : 0.45,
+                color: "#1a1a1a",
+              }}
+            >
+              <PencilIcon size={16} />
+            </button>
+          </div>
           <input
-            placeholder="Description"
+            placeholder="Enter Details"
             value={manualDesc}
             onChange={(e) => setManualDesc(e.target.value)}
             required
@@ -969,6 +1403,121 @@ export function InventoryExpenses() {
         </form>
       </div>
 
+      {renameTypeDialogOpen && (
+        <div
+          role="presentation"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "1rem",
+          }}
+          onClick={closeRenameTypeDialog}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="inventory-rename-type-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: 8,
+              padding: "1.25rem",
+              maxWidth: 400,
+              width: "100%",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+            }}
+          >
+            <h2
+              id="inventory-rename-type-title"
+              style={{
+                margin: "0 0 1rem",
+                fontSize: "1.1rem",
+                fontWeight: 600,
+              }}
+            >
+              Edit inventory item
+            </h2>
+            <form onSubmit={submitRenameType}>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "0.85rem",
+                  color: "#555",
+                }}
+              >
+                Name
+                <input
+                  autoFocus
+                  value={renameTypeName}
+                  onChange={(e) => setRenameTypeName(e.target.value)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    marginTop: 6,
+                    padding: "0.5rem",
+                    border: "1px solid #ccc",
+                    borderRadius: 4,
+                    boxSizing: "border-box",
+                  }}
+                />
+              </label>
+              {renameTypeError && (
+                <p
+                  style={{
+                    color: "#c00",
+                    fontSize: "0.85rem",
+                    margin: "0.75rem 0 0",
+                  }}
+                >
+                  {renameTypeError}
+                </p>
+              )}
+              <div
+                style={{
+                  display: "flex",
+                  gap: "0.5rem",
+                  justifyContent: "flex-end",
+                  marginTop: "1.25rem",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={closeRenameTypeDialog}
+                  style={{
+                    padding: "0.45rem 0.9rem",
+                    background: "#f5f5f5",
+                    border: "1px solid #ccc",
+                    borderRadius: 6,
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    padding: "0.45rem 0.9rem",
+                    background: "#1a1a1a",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 6,
+                    fontWeight: 500,
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  Save
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {typeDialogOpen && (
         <div
           role="presentation"
@@ -1006,7 +1555,7 @@ export function InventoryExpenses() {
                 fontWeight: 600,
               }}
             >
-              New inventory type
+              New inventory item
             </h2>
             <form onSubmit={submitNewType}>
               <label
@@ -1021,7 +1570,7 @@ export function InventoryExpenses() {
                   autoFocus
                   value={typeDialogName}
                   onChange={(e) => setTypeDialogName(e.target.value)}
-                  placeholder="e.g. Raw materials, Supplies"
+                  placeholder="e.g. Cable spool, Paint"
                   style={{
                     display: "block",
                     width: "100%",
@@ -1071,7 +1620,7 @@ export function InventoryExpenses() {
                     fontSize: "0.9rem",
                   }}
                 >
-                  Save type
+                  Save item
                 </button>
               </div>
             </form>

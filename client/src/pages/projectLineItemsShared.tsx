@@ -7,6 +7,7 @@ import {
   ProjectStatus,
   type Vendor,
   type PaymentMethod,
+  type InventoryExpenseType,
 } from "../api";
 import {
   formatDate,
@@ -32,6 +33,29 @@ const theadRowStyle: React.CSSProperties = {
   zIndex: 1,
   boxShadow: "0 1px 0 0 #eee",
 };
+
+/** First dropdown: how the expense is paid */
+const PAY_TYPE_VENDOR = "vendor";
+const PAY_TYPE_BANK = "bank";
+const PAY_TYPE_INVENTORY = "inventory";
+
+function lineItemModeLabel(item: LineItem) {
+  if (item.inventoryExpenseType?.name) {
+    return `Inventory item (${item.inventoryExpenseType.name})`;
+  }
+  if (item.paymentMethod) return item.paymentMethod.name;
+  if (item.vendor?.name) return `Vendor (${item.vendor.name})`;
+  return "Vendor";
+}
+
+/** Both fields have a value → amount is derived from qty × rate and not editable */
+function lineItemUsesRateQty(rate: string, qty: string): boolean {
+  return rate.trim() !== "" && qty.trim() !== "";
+}
+
+function computedAmountFromRateQty(rate: string, qty: string): number {
+  return (parseFloat(rate) || 0) * (parseFloat(qty) || 0);
+}
 
 export type ProjectEntry =
   | { type: "expense"; createdAt: string; data: LineItem }
@@ -209,6 +233,7 @@ export function EditLineItemRow({
   projectId,
   vendors,
   paymentMethods,
+  inventoryTypes,
   onSaved,
   onCancel,
   onError,
@@ -217,6 +242,7 @@ export function EditLineItemRow({
   projectId: string;
   vendors: Vendor[];
   paymentMethods: PaymentMethod[];
+  inventoryTypes: InventoryExpenseType[];
   onSaved: () => void;
   onCancel: () => void;
   onError: (message: string) => void;
@@ -228,35 +254,79 @@ export function EditLineItemRow({
   const [qty, setQty] = useState(item.qty != null ? String(item.qty) : "");
   const [amount, setAmount] = useState(!hasRateQty ? String(item.amount) : "");
   const [vendorId, setVendorId] = useState(item.vendorId ?? "");
-  const [paymentMethodId, setPaymentMethodId] = useState(
+  const [paymentType, setPaymentType] = useState<
+    typeof PAY_TYPE_VENDOR | typeof PAY_TYPE_BANK | typeof PAY_TYPE_INVENTORY | ""
+  >(() =>
+    item.inventoryExpenseTypeId
+      ? PAY_TYPE_INVENTORY
+      : item.paymentMethodId
+        ? PAY_TYPE_BANK
+        : PAY_TYPE_VENDOR,
+  );
+  const [bankPaymentMethodId, setBankPaymentMethodId] = useState(
     item.paymentMethodId ?? "",
+  );
+  const [inventoryExpenseTypeId, setInventoryExpenseTypeId] = useState(
+    item.inventoryExpenseTypeId ?? "",
   );
   const [submitting, setSubmitting] = useState(false);
 
-  const isLedgerMode = paymentMethodId.trim() === "";
-  const ledgerNeedsVendor = isLedgerMode && !vendorId.trim();
+  const vendorNeedsVendor =
+    paymentType === PAY_TYPE_VENDOR && !vendorId.trim();
+  const bankNeedsAccount =
+    paymentType === PAY_TYPE_BANK && !bankPaymentMethodId.trim();
+  const inventoryNeedsType =
+    paymentType === PAY_TYPE_INVENTORY && !inventoryExpenseTypeId.trim();
+  const paymentTypeInvalid = !paymentType;
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (ledgerNeedsVendor) {
-      onError("Select a vendor when using Ledger as payment method.");
+    if (paymentTypeInvalid) {
+      onError("Choose a payment type.");
+      return;
+    }
+    if (vendorNeedsVendor) {
+      onError("Choose a vendor.");
+      return;
+    }
+    if (bankNeedsAccount) {
+      onError("Choose a bank account.");
+      return;
+    }
+    if (inventoryNeedsType) {
+      onError("Choose an inventory item.");
       return;
     }
     if (!description.trim()) {
       onError("Description is required");
       return;
     }
-    const hasRateQtyInput = rate !== "" && qty !== "";
-    const hasAmountInput = amount !== "";
+    const hasRateQtyInput = lineItemUsesRateQty(rate, qty);
+    const hasAmountInput = amount.trim() !== "";
     if (!hasRateQtyInput && !hasAmountInput) {
       onError("Enter either amount or both rate and qty.");
       return;
     }
-    if (hasRateQtyInput && hasAmountInput) {
-      onError("Use either amount or rate × qty, not both.");
-      return;
-    }
     const dateISO = parseDateInput(date) ?? todayISO();
+    const paymentPayload =
+      paymentType === PAY_TYPE_INVENTORY
+        ? {
+            paymentMethodId: null as string | null,
+            inventoryExpenseTypeId: inventoryExpenseTypeId.trim(),
+          }
+        : paymentType === PAY_TYPE_BANK
+          ? {
+              paymentMethodId: bankPaymentMethodId.trim(),
+              inventoryExpenseTypeId: null as null,
+            }
+          : {
+              paymentMethodId: null as string | null,
+              inventoryExpenseTypeId: null as null,
+            };
+    const vendorPayload =
+      paymentType === PAY_TYPE_VENDOR && vendorId.trim()
+        ? vendorId.trim()
+        : null;
     setSubmitting(true);
     try {
       if (hasRateQtyInput) {
@@ -265,16 +335,16 @@ export function EditLineItemRow({
           date: dateISO,
           rate: parseFloat(rate),
           qty: parseFloat(qty),
-          vendorId: vendorId.trim() || null,
-          paymentMethodId: paymentMethodId.trim() || null,
+          vendorId: vendorPayload,
+          ...paymentPayload,
         });
       } else {
         await api.projects.updateLineItem(projectId, item.id, {
           description: description.trim(),
           date: dateISO,
           amount: parseFloat(amount),
-          vendorId: vendorId.trim() || null,
-          paymentMethodId: paymentMethodId.trim() || null,
+          vendorId: vendorPayload,
+          ...paymentPayload,
         });
       }
       onSaved();
@@ -293,6 +363,11 @@ export function EditLineItemRow({
     width: "100%",
     boxSizing: "border-box" as const,
   };
+
+  const usesRateQty = lineItemUsesRateQty(rate, qty);
+  const amountShown = usesRateQty
+    ? String(computedAmountFromRateQty(rate, qty))
+    : amount;
 
   return (
     <tr
@@ -344,45 +419,108 @@ export function EditLineItemRow({
           type="number"
           step="0.01"
           placeholder="Amount"
-          value={amount}
+          value={amountShown}
           onChange={(e) => setAmount(e.target.value)}
-          style={{ ...inputStyle, width: 90 }}
+          disabled={usesRateQty}
+          title={
+            usesRateQty ? "Calculated from quantity × rate" : undefined
+          }
+          style={{
+            ...inputStyle,
+            width: 90,
+            ...(usesRateQty
+              ? {
+                  background: "#f0f0f0",
+                  color: "#555",
+                  cursor: "not-allowed",
+                }
+              : {}),
+          }}
         />
       </td>
       <td style={{ padding: "0.4rem 0.75rem" }}>
         <select
-          value={paymentMethodId}
-          onChange={(e) => setPaymentMethodId(e.target.value)}
+          value={paymentType}
+          onChange={(e) => {
+            const v = e.target.value;
+            setPaymentType(
+              v as
+                | typeof PAY_TYPE_VENDOR
+                | typeof PAY_TYPE_BANK
+                | typeof PAY_TYPE_INVENTORY
+                | "",
+            );
+            setVendorId("");
+            setBankPaymentMethodId("");
+            setInventoryExpenseTypeId("");
+          }}
           style={{ ...inputStyle, minWidth: 100 }}
         >
-          <option value="">Ledger</option>
-          {paymentMethods.map((pm) => (
-            <option key={pm.id} value={pm.id}>
-              {pm.name}
-            </option>
-          ))}
+          <option value="">Choose payment type</option>
+          <option value={PAY_TYPE_VENDOR}>Vendor</option>
+          <option value={PAY_TYPE_BANK}>Bank accounts</option>
+          <option value={PAY_TYPE_INVENTORY}>Inventory item</option>
         </select>
+        {paymentType === PAY_TYPE_VENDOR && (
+          <select
+            value={vendorId}
+            onChange={(e) => setVendorId(e.target.value)}
+            style={{ ...inputStyle, minWidth: 130, marginTop: 6 }}
+          >
+            <option value="">Choose a vendor</option>
+            {vendors.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+        )}
+        {paymentType === PAY_TYPE_BANK && (
+          <select
+            value={bankPaymentMethodId}
+            onChange={(e) => setBankPaymentMethodId(e.target.value)}
+            style={{ ...inputStyle, minWidth: 130, marginTop: 6 }}
+          >
+            <option value="">Choose a bank account</option>
+            {paymentMethods.map((pm) => (
+              <option key={pm.id} value={pm.id}>
+                {pm.name}
+              </option>
+            ))}
+          </select>
+        )}
+        {paymentType === PAY_TYPE_INVENTORY && (
+          <select
+            value={inventoryExpenseTypeId}
+            onChange={(e) => setInventoryExpenseTypeId(e.target.value)}
+            style={{ ...inputStyle, minWidth: 130, marginTop: 6 }}
+          >
+            <option value="">Choose Item</option>
+            {inventoryTypes.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        )}
       </td>
-      <td style={{ padding: "0.4rem 0.75rem" }}>
-        <select
-          value={vendorId}
-          onChange={(e) => setVendorId(e.target.value)}
-          style={{ ...inputStyle, minWidth: 110 }}
-        >
-          <option value="">—</option>
-          {vendors.map((v) => (
-            <option key={v.id} value={v.id}>
-              {v.name}
-            </option>
-          ))}
-        </select>
+      <td style={{ padding: "0.4rem 0.75rem", color: "#666" }}>
+        {paymentType === PAY_TYPE_VENDOR && vendorId
+          ? vendors.find((x) => x.id === vendorId)?.name ?? "—"
+          : "—"}
       </td>
       <td style={{ padding: "0.4rem 0.75rem" }}>
         <div style={{ display: "flex", gap: "0.5rem" }}>
           <button
             type="button"
             onClick={handleSave}
-            disabled={submitting || ledgerNeedsVendor}
+            disabled={
+              submitting ||
+              paymentTypeInvalid ||
+              vendorNeedsVendor ||
+              bankNeedsAccount ||
+              inventoryNeedsType
+            }
             style={{
               padding: "0.35rem 0.6rem",
               background: "#1a1a1a",
@@ -390,9 +528,21 @@ export function EditLineItemRow({
               borderRadius: 4,
               fontSize: "0.85rem",
               cursor:
-                submitting || ledgerNeedsVendor ? "not-allowed" : "pointer",
+                submitting ||
+                paymentTypeInvalid ||
+                vendorNeedsVendor ||
+                bankNeedsAccount ||
+                inventoryNeedsType
+                  ? "not-allowed"
+                  : "pointer",
               border: "none",
-              opacity: ledgerNeedsVendor ? 0.5 : 1,
+              opacity:
+                paymentTypeInvalid ||
+                vendorNeedsVendor ||
+                bankNeedsAccount ||
+                inventoryNeedsType
+                  ? 0.5
+                  : 1,
             }}
           >
             Save
@@ -571,6 +721,7 @@ export function AddExpenseForm({
   projectId,
   vendors,
   paymentMethods,
+  inventoryTypes,
   totalExpenses,
   onAdded,
   onError,
@@ -578,6 +729,7 @@ export function AddExpenseForm({
   projectId: string;
   vendors: Vendor[];
   paymentMethods: PaymentMethod[];
+  inventoryTypes: InventoryExpenseType[];
   totalExpenses: number;
   onAdded: () => void;
   onError: (s: string) => void;
@@ -587,35 +739,86 @@ export function AddExpenseForm({
   const [rate, setRate] = useState("");
   const [qty, setQty] = useState("");
   const [amount, setAmount] = useState("");
+  const [paymentType, setPaymentType] = useState<
+    typeof PAY_TYPE_VENDOR | typeof PAY_TYPE_BANK | typeof PAY_TYPE_INVENTORY | ""
+  >("");
   const [vendorId, setVendorId] = useState("");
-  const [paymentMethodId, setPaymentMethodId] = useState("");
+  const [bankPaymentMethodId, setBankPaymentMethodId] = useState("");
+  const [inventoryExpenseTypeId, setInventoryExpenseTypeId] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const isLedgerMode = paymentMethodId === "";
-  const ledgerNeedsVendor = isLedgerMode && !vendorId.trim();
+  const vendorNeedsVendor =
+    paymentType === PAY_TYPE_VENDOR && !vendorId.trim();
+  const bankNeedsAccount =
+    paymentType === PAY_TYPE_BANK && !bankPaymentMethodId.trim();
+  const inventoryNeedsType =
+    paymentType === PAY_TYPE_INVENTORY && !inventoryExpenseTypeId.trim();
+  const paymentTypeInvalid = !paymentType;
+
+  const usesRateQty = lineItemUsesRateQty(rate, qty);
+  const amountShown = usesRateQty
+    ? String(computedAmountFromRateQty(rate, qty))
+    : amount;
+
+  const paymentPayload = () => {
+    if (paymentType === PAY_TYPE_INVENTORY) {
+      return {
+        paymentMethodId: null as string | null,
+        inventoryExpenseTypeId: inventoryExpenseTypeId.trim(),
+      };
+    }
+    if (paymentType === PAY_TYPE_BANK) {
+      return {
+        paymentMethodId: bankPaymentMethodId.trim(),
+        inventoryExpenseTypeId: null as null,
+      };
+    }
+    if (paymentType === PAY_TYPE_VENDOR) {
+      return {
+        paymentMethodId: null as string | null,
+        inventoryExpenseTypeId: null as null,
+      };
+    }
+    return {
+      paymentMethodId: null as string | null,
+      inventoryExpenseTypeId: null as null,
+    };
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (ledgerNeedsVendor) {
-      onError("Select a vendor when using Ledger as payment method.");
+    if (paymentTypeInvalid) {
+      onError("Choose a payment type.");
+      return;
+    }
+    if (vendorNeedsVendor) {
+      onError("Choose a vendor.");
+      return;
+    }
+    if (bankNeedsAccount) {
+      onError("Choose a bank account.");
+      return;
+    }
+    if (inventoryNeedsType) {
+      onError("Choose an inventory item.");
       return;
     }
     if (!name.trim()) return;
-    const hasRateQty = rate !== "" && qty !== "";
-    const hasAmount = amount !== "";
+    const hasRateQty = lineItemUsesRateQty(rate, qty);
+    const hasAmount = amount.trim() !== "";
     if (!hasRateQty && !hasAmount) {
       onError("Enter either amount or both rate and qty.");
       return;
     }
-    if (hasRateQty && hasAmount) {
-      onError("Use either amount or rate × qty, not both.");
-      return;
-    }
-    if (!hasRateQty && (rate !== "" || qty !== "")) {
+    if (!hasRateQty && (rate.trim() !== "" || qty.trim() !== "")) {
       onError("Provide both rate and qty, or use a single amount.");
       return;
     }
     const dateISO = parseDateInput(date) ?? todayISO();
+    const vendorForApi =
+      paymentType === PAY_TYPE_VENDOR && vendorId.trim()
+        ? vendorId.trim()
+        : undefined;
     setSubmitting(true);
     try {
       await (hasRateQty
@@ -624,15 +827,15 @@ export function AddExpenseForm({
             date: dateISO,
             rate: parseFloat(rate),
             qty: parseFloat(qty),
-            vendorId: vendorId || undefined,
-            paymentMethodId: paymentMethodId || undefined,
+            vendorId: vendorForApi,
+            ...paymentPayload(),
           })
         : api.projects.addLineItem(projectId, {
             description: name.trim(),
             date: dateISO,
             amount: parseFloat(amount),
-            vendorId: vendorId || undefined,
-            paymentMethodId: paymentMethodId || undefined,
+            vendorId: vendorForApi,
+            ...paymentPayload(),
           }));
 
       setName("");
@@ -640,8 +843,10 @@ export function AddExpenseForm({
       setRate("");
       setQty("");
       setAmount("");
+      setPaymentType("");
       setVendorId("");
-      setPaymentMethodId("");
+      setBankPaymentMethodId("");
+      setInventoryExpenseTypeId("");
       onAdded();
     } catch (err) {
       onError((err as Error).message);
@@ -742,35 +947,56 @@ export function AddExpenseForm({
         type="number"
         step="0.01"
         placeholder="Amount"
-        value={amount}
+        value={amountShown}
         onChange={(e) => setAmount(e.target.value)}
+        disabled={usesRateQty}
+        title={
+          usesRateQty ? "Calculated from quantity × rate" : undefined
+        }
         style={{
           padding: "0.4rem",
           border: "1px solid #ccc",
           borderRadius: 4,
           fontSize: "0.8125rem",
           width: 90,
+          ...(usesRateQty
+            ? {
+                background: "#f0f0f0",
+                color: "#555",
+                cursor: "not-allowed",
+              }
+            : {}),
         }}
       />
       <select
-        value={paymentMethodId}
-        onChange={(e) => setPaymentMethodId(e.target.value)}
+        value={paymentType}
+        onChange={(e) => {
+          const v = e.target.value;
+          setPaymentType(
+            v as
+              | typeof PAY_TYPE_VENDOR
+              | typeof PAY_TYPE_BANK
+              | typeof PAY_TYPE_INVENTORY
+              | "",
+          );
+          setVendorId("");
+          setBankPaymentMethodId("");
+          setInventoryExpenseTypeId("");
+        }}
         style={{
           padding: "0.4rem",
           border: "1px solid #ccc",
           borderRadius: 4,
           fontSize: "0.8125rem",
-          minWidth: 120,
+          minWidth: 140,
         }}
       >
-        <option value="">Ledger</option>
-        {paymentMethods.map((pm) => (
-          <option key={pm.id} value={pm.id}>
-            {pm.name}
-          </option>
-        ))}
+        <option value="">Choose payment type</option>
+        <option value={PAY_TYPE_VENDOR}>Vendor</option>
+        <option value={PAY_TYPE_BANK}>Bank accounts</option>
+        <option value={PAY_TYPE_INVENTORY}>Inventory item</option>
       </select>
-      {paymentMethodId === "" && (
+      {paymentType === PAY_TYPE_VENDOR && (
         <select
           value={vendorId}
           onChange={(e) => setVendorId(e.target.value)}
@@ -779,10 +1005,10 @@ export function AddExpenseForm({
             border: "1px solid #ccc",
             borderRadius: 4,
             fontSize: "0.8125rem",
-            minWidth: 130,
+            minWidth: 150,
           }}
         >
-          <option value="">Vendor</option>
+          <option value="">Choose a vendor</option>
           {vendors.map((v) => (
             <option key={v.id} value={v.id}>
               {v.name}
@@ -790,17 +1016,76 @@ export function AddExpenseForm({
           ))}
         </select>
       )}
+      {paymentType === PAY_TYPE_BANK && (
+        <select
+          value={bankPaymentMethodId}
+          onChange={(e) => setBankPaymentMethodId(e.target.value)}
+          style={{
+            padding: "0.4rem",
+            border: "1px solid #ccc",
+            borderRadius: 4,
+            fontSize: "0.8125rem",
+            minWidth: 150,
+          }}
+        >
+          <option value="">Choose a bank account</option>
+          {paymentMethods.map((pm) => (
+            <option key={pm.id} value={pm.id}>
+              {pm.name}
+            </option>
+          ))}
+        </select>
+      )}
+      {paymentType === PAY_TYPE_INVENTORY && (
+        <select
+          value={inventoryExpenseTypeId}
+          onChange={(e) => setInventoryExpenseTypeId(e.target.value)}
+          style={{
+            padding: "0.4rem",
+            border: "1px solid #ccc",
+            borderRadius: 4,
+            fontSize: "0.8125rem",
+            minWidth: 150,
+          }}
+        >
+          <option value="">Choose Item</option>
+          {inventoryTypes.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      )}
       <button
         type="submit"
-        disabled={submitting || ledgerNeedsVendor}
+        disabled={
+          submitting ||
+          paymentTypeInvalid ||
+          vendorNeedsVendor ||
+          bankNeedsAccount ||
+          inventoryNeedsType
+        }
         style={{
           padding: "0.5rem 1rem",
           background: "#1a1a1a",
           color: "#fff",
           borderRadius: 6,
           fontWeight: 500,
-          cursor: submitting || ledgerNeedsVendor ? "not-allowed" : "pointer",
-          opacity: ledgerNeedsVendor ? 0.5 : 1,
+          cursor:
+            submitting ||
+            paymentTypeInvalid ||
+            vendorNeedsVendor ||
+            bankNeedsAccount ||
+            inventoryNeedsType
+              ? "not-allowed"
+              : "pointer",
+          opacity:
+            paymentTypeInvalid ||
+            vendorNeedsVendor ||
+            bankNeedsAccount ||
+            inventoryNeedsType
+              ? 0.5
+              : 1,
         }}
       >
         Add
@@ -962,12 +1247,14 @@ export function ProjectExpenseLedger({
   project,
   vendors,
   paymentMethods,
+  inventoryTypes,
   onRefresh,
   onError,
 }: {
   project: ExpensesAndPaymentsProject;
   vendors: Vendor[];
   paymentMethods: PaymentMethod[];
+  inventoryTypes: InventoryExpenseType[];
   onRefresh: () => void;
   onError: (message: string | null) => void;
 }) {
@@ -1050,6 +1337,7 @@ export function ProjectExpenseLedger({
                         projectId={project.id}
                         vendors={vendors}
                         paymentMethods={paymentMethods}
+                        inventoryTypes={inventoryTypes}
                         onSaved={() => {
                           setEditingLineItemKey(null);
                           onRefresh();
@@ -1108,9 +1396,7 @@ export function ProjectExpenseLedger({
                         {formatMoney(total)}
                       </td>
                       <td style={{ padding: "0.4rem 0.75rem" }}>
-                        {item.paymentMethod
-                          ? item.paymentMethod.name
-                          : "Ledger"}
+                        {lineItemModeLabel(item)}
                       </td>
                       <td style={{ padding: "0.4rem 0.75rem" }}>
                         {item.vendor ? item.vendor.name : "—"}
@@ -1307,6 +1593,7 @@ export function ProjectExpenseLedger({
             projectId={project.id}
             vendors={vendors}
             paymentMethods={paymentMethods}
+            inventoryTypes={inventoryTypes}
             totalExpenses={totalExpenses}
             onAdded={onRefresh}
             onError={(msg) => onError(msg)}

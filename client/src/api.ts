@@ -48,10 +48,12 @@ export type LineItem = {
   rate?: number | null;
   qty?: number | null;
   paymentMethodId?: string | null;
+  inventoryExpenseTypeId?: string | null;
   createdAt?: string;
   project?: { id: string; name: string };
   vendor?: { id: string; name: string } | null;
   paymentMethod?: { id: string; name: string; type: string } | null;
+  inventoryExpenseType?: { id: string; name: string } | null;
 };
 
 export type ProjectPayment = {
@@ -198,6 +200,7 @@ export type InventoryExpense = {
   date: string;
   paymentMethodId?: string | null;
   inventoryExpenseTypeId?: string | null;
+  lineItemId?: string | null;
   createdAt?: string;
   paymentMethod?: { id: string; name: string; type: string } | null;
   inventoryExpenseType?: { id: string; name: string } | null;
@@ -231,6 +234,7 @@ export const api = {
         rate?: number;
         qty?: number;
         paymentMethodId?: string | null;
+        inventoryExpenseTypeId?: string | null;
       }
     ) =>
       request<LineItem>(`/projects/${projectId}/line-items`, { method: "POST", body: JSON.stringify(data) }),
@@ -245,6 +249,7 @@ export const api = {
         rate?: number | null;
         qty?: number | null;
         paymentMethodId?: string | null;
+        inventoryExpenseTypeId?: string | null;
       }
     ) =>
       request<LineItem>(`/projects/${projectId}/line-items/${itemId}`, { method: "PATCH", body: JSON.stringify(data) }),
@@ -359,6 +364,11 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       }),
+    update: (id: string, data: { name: string }) =>
+      request<InventoryExpenseType>(`/inventory-expense-types/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
   },
 
   inventoryExpenses: {
@@ -368,7 +378,7 @@ export const api = {
       amount: number;
       date?: string;
       paymentMethodId?: string | null;
-      inventoryExpenseTypeId?: string | null;
+      inventoryExpenseTypeId: string;
     }) =>
       request<InventoryExpense>("/inventory-expenses", {
         method: "POST",
