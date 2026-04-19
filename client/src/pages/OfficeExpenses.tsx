@@ -44,7 +44,7 @@ function OfficeExpenseTypeCombobox({
   selectedId,
   onSelectedIdChange,
   onRequestCreateNew,
-  placeholder = "Type (optional)",
+  placeholder = "Enter expense",
   inputStyle,
   minInputWidth = 140,
 }: OfficeExpenseTypeComboboxProps) {
@@ -71,7 +71,10 @@ function OfficeExpenseTypeCombobox({
   });
 
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId) {
+      setQuery("");
+      return;
+    }
     const t = types.find((x) => x.id === selectedId);
     if (t) setQuery(t.name);
   }, [selectedId, types]);
@@ -557,6 +560,10 @@ export function OfficeExpenses() {
   const addItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualDesc.trim() || manualAmount === "") return;
+    if (!manualOfficeExpenseTypeId.trim()) {
+      setError("Enter an expense type.");
+      return;
+    }
     try {
       setError(null);
       const dateISO = manualDate
@@ -567,7 +574,7 @@ export function OfficeExpenses() {
         amount: parseFloat(manualAmount),
         date: dateISO,
         paymentMethodId: manualPaymentMethodId.trim() || null,
-        officeExpenseTypeId: manualOfficeExpenseTypeId.trim() || null,
+        officeExpenseTypeId: manualOfficeExpenseTypeId.trim(),
       });
       setManualDesc("");
       setManualAmount("");
@@ -613,6 +620,10 @@ export function OfficeExpenses() {
   const saveEdit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     if (!editingId || !editDesc.trim() || editAmount === "") return;
+    if (!editOfficeExpenseTypeId.trim()) {
+      setError("Enter an expense type.");
+      return;
+    }
     try {
       setError(null);
       const dateISO = editDate
@@ -623,7 +634,7 @@ export function OfficeExpenses() {
         amount: parseFloat(editAmount),
         date: dateISO,
         paymentMethodId: editPaymentMethodId.trim() || null,
-        officeExpenseTypeId: editOfficeExpenseTypeId.trim() || null,
+        officeExpenseTypeId: editOfficeExpenseTypeId.trim(),
       });
       cancelEdit();
       load();
@@ -1298,7 +1309,7 @@ export function OfficeExpenses() {
                               selectedId={editOfficeExpenseTypeId}
                               onSelectedIdChange={setEditOfficeExpenseTypeId}
                               onRequestCreateNew={() => openTypeDialog("edit")}
-                              placeholder="Type (optional)"
+                              placeholder="Enter expense"
                               minInputWidth={120}
                               inputStyle={{ padding: "0.4rem" }}
                             />

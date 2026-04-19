@@ -31,13 +31,20 @@ officeExpensesRouter.post("/", async (req, res) => {
     if (!description?.trim() || amount == null) {
       return res.status(400).json({ error: "Description and amount are required" });
     }
+    const typeId =
+      officeExpenseTypeId != null && String(officeExpenseTypeId).trim() !== ""
+        ? String(officeExpenseTypeId).trim()
+        : null;
+    if (!typeId) {
+      return res.status(400).json({ error: "Expense type is required" });
+    }
     const item = await prisma.officeExpense.create({
       data: {
         description: description.trim(),
         amount: Number(amount),
         ...(date && { date: new Date(date) }),
         paymentMethodId: paymentMethodId?.trim() ? paymentMethodId.trim() : null,
-        officeExpenseTypeId: officeExpenseTypeId?.trim() ? officeExpenseTypeId.trim() : null,
+        officeExpenseTypeId: typeId,
       },
       include: {
         paymentMethod: { select: { id: true, name: true, type: true } },

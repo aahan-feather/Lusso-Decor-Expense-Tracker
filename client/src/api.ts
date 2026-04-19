@@ -361,7 +361,7 @@ export const api = {
       amount: number;
       date?: string;
       paymentMethodId?: string | null;
-      officeExpenseTypeId?: string | null;
+      officeExpenseTypeId: string;
     }) =>
       request<OfficeExpense>("/office-expenses", {
         method: "POST",
