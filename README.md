@@ -28,10 +28,11 @@ From the repo root:
 | Command        | Description                          |
 |----------------|--------------------------------------|
 | `npm run dev`  | API (port **3001**) + Vite (**5173**) |
+| `npm run dev:production` | Production build + API serving app on **3001** (`NODE_ENV=production`) |
 | `npm run dev:server` | API only                       |
 | `npm run dev:client` | Front end only (proxies `/api` to 3001) |
 
-Open **http://localhost:5173** while developing.
+Open **http://localhost:5173** while developing. Use **http://localhost:3001** for `dev:production` (same as deploy: no import button, built client assets).
 
 ## Build
 
@@ -63,6 +64,6 @@ See **[DEPLOY.md](./DEPLOY.md)** for Render (Docker + managed Postgres) and note
 
 ## Database changes & backups
 
-The dashboard **Export backup** / **Import backup** buttons download or restore a full-database zip (`GET /api/backup/export`, `POST /api/backup/import`). Export includes every Prisma model automatically. Import replaces all existing data with the zip contents (you will be asked to confirm).
+The dashboard **Export backup** button downloads all rows as a zip (`GET /api/backup/export`). **Import backup** is shown only in local dev (`npm run dev`); production builds hide it and disable `POST /api/backup/import`. Import replaces all existing data with the zip contents (you will be asked to confirm).
 
 If you change the schema (human or coding agent), follow **[AGENTS.md](./AGENTS.md)** — especially migrate, `npm run db:generate`, and any API/UI updates.

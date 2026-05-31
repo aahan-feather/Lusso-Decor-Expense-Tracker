@@ -13,6 +13,9 @@ const backupButtonStyle = {
   cursor: "pointer",
 } as const;
 
+/** Vite dev server only; production builds omit import UI. */
+const showBackupImport = import.meta.env.DEV;
+
 export function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -112,7 +115,7 @@ export function Dashboard() {
           <button
             type="button"
             onClick={handleExport}
-            disabled={exporting || importing}
+            disabled={exporting || (showBackupImport && importing)}
             style={{
               ...backupButtonStyle,
               cursor: exporting || importing ? "wait" : "pointer",
@@ -121,31 +124,35 @@ export function Dashboard() {
           >
             {exporting ? "Exporting…" : "Export backup"}
           </button>
-          <button
-            type="button"
-            onClick={handleImportClick}
-            disabled={exporting || importing}
-            style={{
-              ...backupButtonStyle,
-              background: "#fff",
-              color: "#1a1a1a",
-              border: "1px solid #ccc",
-              cursor: exporting || importing ? "wait" : "pointer",
-              opacity: exporting || importing ? 0.7 : 1,
-            }}
-          >
-            {importing ? "Importing…" : "Import backup"}
-          </button>
-          <input
-            ref={importInputRef}
-            type="file"
-            accept=".zip,application/zip"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void handleImportFile(file);
-            }}
-          />
+          {showBackupImport && (
+            <>
+              <button
+                type="button"
+                onClick={handleImportClick}
+                disabled={exporting || importing}
+                style={{
+                  ...backupButtonStyle,
+                  background: "#fff",
+                  color: "#1a1a1a",
+                  border: "1px solid #ccc",
+                  cursor: exporting || importing ? "wait" : "pointer",
+                  opacity: exporting || importing ? 0.7 : 1,
+                }}
+              >
+                {importing ? "Importing…" : "Import backup"}
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".zip,application/zip"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleImportFile(file);
+                }}
+              />
+            </>
+          )}
         </div>
       </div>
       {backupError && (

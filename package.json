@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:production": "npm run build && cd server && NODE_ENV=production npx prisma migrate deploy && NODE_ENV=production node dist/index.js",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
     "build": "npm run build:server && npm run build:client",
