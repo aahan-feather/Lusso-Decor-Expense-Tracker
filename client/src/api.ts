@@ -108,6 +108,7 @@ export type VendorPayment = {
 };
 
 export type DashboardData = {
+  backupImportEnabled: boolean;
   counts: { projects: number; vendors: number };
   totals: {
     totalBilled: number;

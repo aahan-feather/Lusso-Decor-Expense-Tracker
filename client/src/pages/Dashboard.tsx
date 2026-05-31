@@ -13,9 +13,6 @@ const backupButtonStyle = {
   cursor: "pointer",
 } as const;
 
-/** Vite dev server only; production builds omit import UI. */
-const showBackupImport = import.meta.env.DEV;
-
 export function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,7 +82,7 @@ export function Dashboard() {
   if (error) return <p style={{ color: "#c00" }}>{error}</p>;
   if (!data) return null;
 
-  const { counts, totals, recent } = data;
+  const { backupImportEnabled, counts, totals, recent } = data;
 
   const cards = [
     { label: "Total projects", value: counts.projects, link: "/projects" },
@@ -115,7 +112,7 @@ export function Dashboard() {
           <button
             type="button"
             onClick={handleExport}
-            disabled={exporting || (showBackupImport && importing)}
+            disabled={exporting || (backupImportEnabled && importing)}
             style={{
               ...backupButtonStyle,
               cursor: exporting || importing ? "wait" : "pointer",
@@ -124,7 +121,7 @@ export function Dashboard() {
           >
             {exporting ? "Exporting…" : "Export backup"}
           </button>
-          {showBackupImport && (
+          {backupImportEnabled && (
             <>
               <button
                 type="button"
