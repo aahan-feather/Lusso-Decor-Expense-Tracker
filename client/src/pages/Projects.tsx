@@ -419,7 +419,7 @@ export function ProjectDetail() {
           name: projectName.trim(),
           invoiceAmount: invVal ?? undefined,
           type: newType ?? undefined,
-          status: newStatus ?? undefined,
+          status: ProjectStatus.Running,
           documentRef: documentRef.trim() || undefined,
           date: dateISO,
           contactPerson1Name: contactPerson1Name.trim() || undefined,
@@ -581,25 +581,29 @@ export function ProjectDetail() {
             <option value="Quotation">Quotation</option>
             <option value="Invoice">Invoice</option>
           </select>
-          <span style={{ fontSize: "0.9rem" }}>Status</span>
-          <select
-            value={projectStatus}
-            onChange={(e) =>
-              setProjectStatus(e.target.value as ProjectStatus | "")
-            }
-            style={{
-              padding: "0.35rem 0.5rem",
-              width: "100%",
-              maxWidth: 140,
-              border: "1px solid #ccc",
-              borderRadius: 4,
-            }}
-          >
-            <option value="">—</option>
-            <option value={ProjectStatus.Running}>Running</option>
-            <option value={ProjectStatus.Due}>Due</option>
-            <option value={ProjectStatus.Closed}>Closed</option>
-          </select>
+          {!isCreateMode && (
+            <>
+              <span style={{ fontSize: "0.9rem" }}>Status</span>
+              <select
+                value={projectStatus}
+                onChange={(e) =>
+                  setProjectStatus(e.target.value as ProjectStatus | "")
+                }
+                style={{
+                  padding: "0.35rem 0.5rem",
+                  width: "100%",
+                  maxWidth: 140,
+                  border: "1px solid #ccc",
+                  borderRadius: 4,
+                }}
+              >
+                <option value="">—</option>
+                <option value={ProjectStatus.Running}>Running</option>
+                <option value={ProjectStatus.Due}>Due</option>
+                <option value={ProjectStatus.Closed}>Closed</option>
+              </select>
+            </>
+          )}
           <span style={{ fontSize: "0.9rem" }}>Invoice # / Quotation Dt</span>
           <input
             value={documentRef}

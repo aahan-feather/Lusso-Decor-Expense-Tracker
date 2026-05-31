@@ -10,6 +10,10 @@ import {
   type InventoryExpenseType,
 } from "../api";
 import {
+  ScrollableSortableTable,
+  type TableColumn,
+} from "../components/ScrollableSortableTable";
+import {
   formatDate,
   formatMoney,
   todayISO,
@@ -18,21 +22,17 @@ import {
 } from "../utils/format";
 import { PencilIcon, TrashIcon } from "lucide-react";
 
-/** Align with Vendors / Office expenses tables */
-const tableSurface: React.CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.8125rem",
-};
-
-const theadRowStyle: React.CSSProperties = {
-  background: "#f8f8f8",
-  textAlign: "left",
-  position: "sticky",
-  top: 0,
-  zIndex: 1,
-  boxShadow: "0 1px 0 0 #eee",
-};
+const LEDGER_TABLE_COLUMNS: TableColumn[] = [
+  { header: "Date" },
+  { header: "Amt. Recd.", headerStyle: { textAlign: "right" } },
+  { header: "Name", headerStyle: { padding: "0.4rem 0.75rem 0.4rem 2rem" } },
+  { header: "Qty" },
+  { header: "Rate" },
+  { header: "Amount", headerStyle: { textAlign: "right" } },
+  { header: "Mode" },
+  { header: "Vendor" },
+  { header: "", headerStyle: { width: 80 } },
+];
 
 /** First dropdown: how the expense is paid */
 const PAY_TYPE_VENDOR = "vendor";
@@ -76,11 +76,15 @@ export function mergeEntries(
       (p as ProjectPayment & { createdAt?: string }).createdAt ?? p.date,
     data: p,
   }));
-  const merged = [...expenses, ...payments].sort(
-    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-  );
-  return merged;
+  return [...expenses, ...payments];
 }
+
+const sortEntriesByDateAsc = (a: ProjectEntry, b: ProjectEntry) => {
+  const byDate =
+    new Date(a.data.date).getTime() - new Date(b.data.date).getTime();
+  if (byDate !== 0) return byDate;
+  return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+};
 
 /** For Add expense / Receive payment header totals only. */
 function projectExpensesAndReceivedTotals(
@@ -597,7 +601,7 @@ export function EditPaymentRow({
       return;
     }
     const amt = parseFloat(amount);
-    if (Number.isNaN(amt) || amt < 0) {
+    if (!Number.isFinite(amt)) {
       onError("Enter a valid amount");
       return;
     }
@@ -754,9 +758,23 @@ export function AddExpenseForm({
   const inventoryNeedsType =
     paymentType === PAY_TYPE_INVENTORY && !inventoryExpenseTypeId.trim();
   const paymentTypeInvalid = !paymentType;
+  const nameMissing = !name.trim();
+  const hasRateQty = lineItemUsesRateQty(rate, qty);
+  const hasAmount = amount.trim() !== "";
+  const amountInvalid = !hasRateQty && !hasAmount;
+  const partialRateQty =
+    !hasRateQty && (rate.trim() !== "" || qty.trim() !== "");
+  const submitDisabled =
+    submitting ||
+    nameMissing ||
+    paymentTypeInvalid ||
+    vendorNeedsVendor ||
+    bankNeedsAccount ||
+    inventoryNeedsType ||
+    amountInvalid ||
+    partialRateQty;
 
-  const usesRateQty = lineItemUsesRateQty(rate, qty);
-  const amountShown = usesRateQty
+  const amountShown = hasRateQty
     ? String(computedAmountFromRateQty(rate, qty))
     : amount;
 
@@ -804,13 +822,13 @@ export function AddExpenseForm({
       return;
     }
     if (!name.trim()) return;
-    const hasRateQty = lineItemUsesRateQty(rate, qty);
-    const hasAmount = amount.trim() !== "";
-    if (!hasRateQty && !hasAmount) {
+    const hasRateQtyInput = lineItemUsesRateQty(rate, qty);
+    const hasAmountInput = amount.trim() !== "";
+    if (!hasRateQtyInput && !hasAmountInput) {
       onError("Enter either amount or both rate and qty.");
       return;
     }
-    if (!hasRateQty && (rate.trim() !== "" || qty.trim() !== "")) {
+    if (!hasRateQtyInput && (rate.trim() !== "" || qty.trim() !== "")) {
       onError("Provide both rate and qty, or use a single amount.");
       return;
     }
@@ -821,7 +839,7 @@ export function AddExpenseForm({
         : undefined;
     setSubmitting(true);
     try {
-      await (hasRateQty
+      await (hasRateQtyInput
         ? api.projects.addLineItem(projectId, {
             description: name.trim(),
             date: dateISO,
@@ -879,9 +897,9 @@ export function AddExpenseForm({
           fontSize: "0.8125rem",
         }}
       >
-        <strong>Add expense</strong>
+        <strong>Add Expense</strong>
         <span style={{ fontWeight: 500 }}>
-          Total expenses {formatMoney(totalExpenses)}
+          Total Expenses {formatMoney(totalExpenses)}
         </span>
       </div>
       <input
@@ -949,9 +967,9 @@ export function AddExpenseForm({
         placeholder="Amount"
         value={amountShown}
         onChange={(e) => setAmount(e.target.value)}
-        disabled={usesRateQty}
+        disabled={hasRateQty}
         title={
-          usesRateQty ? "Calculated from quantity × rate" : undefined
+          hasRateQty ? "Calculated from quantity × rate" : undefined
         }
         style={{
           padding: "0.4rem",
@@ -959,7 +977,7 @@ export function AddExpenseForm({
           borderRadius: 4,
           fontSize: "0.8125rem",
           width: 90,
-          ...(usesRateQty
+          ...(hasRateQty
             ? {
                 background: "#f0f0f0",
                 color: "#555",
@@ -1058,34 +1076,15 @@ export function AddExpenseForm({
       )}
       <button
         type="submit"
-        disabled={
-          submitting ||
-          paymentTypeInvalid ||
-          vendorNeedsVendor ||
-          bankNeedsAccount ||
-          inventoryNeedsType
-        }
+        disabled={submitDisabled}
         style={{
           padding: "0.5rem 1rem",
           background: "#1a1a1a",
           color: "#fff",
           borderRadius: 6,
           fontWeight: 500,
-          cursor:
-            submitting ||
-            paymentTypeInvalid ||
-            vendorNeedsVendor ||
-            bankNeedsAccount ||
-            inventoryNeedsType
-              ? "not-allowed"
-              : "pointer",
-          opacity:
-            paymentTypeInvalid ||
-            vendorNeedsVendor ||
-            bankNeedsAccount ||
-            inventoryNeedsType
-              ? 0.5
-              : 1,
+          cursor: submitDisabled ? "not-allowed" : "pointer",
+          opacity: submitDisabled ? 0.5 : 1,
         }}
       >
         Add
@@ -1112,6 +1111,12 @@ export function AddPaymentForm({
   const [amount, setAmount] = useState("");
   const [paymentMethodId, setPaymentMethodId] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const nameMissing = !name.trim();
+  const amountMissing = !amount.trim();
+  const paymentMethodMissing = !paymentMethodId.trim();
+  const submitDisabled =
+    submitting || nameMissing || amountMissing || paymentMethodMissing;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1161,9 +1166,9 @@ export function AddPaymentForm({
           fontSize: "0.8125rem",
         }}
       >
-        <strong>Receive payment</strong>
+        <strong>Add Receipts</strong>
         <span style={{ fontWeight: 500 }}>
-          Total received {formatMoney(totalReceived)}
+          Total Received {formatMoney(totalReceived)}
         </span>
       </div>
       <input
@@ -1228,13 +1233,15 @@ export function AddPaymentForm({
       </select>
       <button
         type="submit"
-        disabled={submitting}
+        disabled={submitDisabled}
         style={{
           padding: "0.5rem 1rem",
           background: "#1a1a1a",
           color: "#fff",
           borderRadius: 6,
           fontWeight: 500,
+          cursor: submitDisabled ? "not-allowed" : "pointer",
+          opacity: submitDisabled ? 0.5 : 1,
         }}
       >
         Add
@@ -1271,60 +1278,19 @@ export function ProjectExpenseLedger({
 
   return (
     <div>
-      <div
-        style={{
+      <ScrollableSortableTable
+        items={entries}
+        sortCompare={sortEntriesByDateAsc}
+        columns={LEDGER_TABLE_COLUMNS}
+        scrollDeps={[project.id]}
+        emptyMessage="No line items or payments yet."
+        containerStyle={{
           maxHeight: "min(70vh, calc(100vh - 320px))",
-          overflowY: "auto",
-          width: "100%",
+          background: "transparent",
+          borderRadius: 0,
+          boxShadow: "none",
         }}
-      >
-        {entries.length === 0 ? (
-          <p
-            style={{
-              padding: "1.25rem 0.75rem",
-              margin: 0,
-              color: "#666",
-            }}
-          >
-            No line items or payments yet.
-          </p>
-        ) : (
-          <table style={tableSurface}>
-            <thead>
-              <tr style={theadRowStyle}>
-                <th style={{ padding: "0.4rem 0.75rem" }}>Date</th>
-                <th
-                  style={{
-                    padding: "0.4rem 0.75rem",
-                    textAlign: "right",
-                  }}
-                >
-                  Amt. Recd.
-                </th>
-                <th
-                  style={{
-                    padding: "0.4rem 0.75rem 0.4rem 2rem",
-                  }}
-                >
-                  Name
-                </th>
-                <th style={{ padding: "0.4rem 0.75rem" }}>Qty</th>
-                <th style={{ padding: "0.4rem 0.75rem" }}>Rate</th>
-                <th
-                  style={{
-                    padding: "0.4rem 0.75rem",
-                    textAlign: "right",
-                  }}
-                >
-                  Amount
-                </th>
-                <th style={{ padding: "0.4rem 0.75rem" }}>Mode</th>
-                <th style={{ padding: "0.4rem 0.75rem" }}>Vendor</th>
-                <th style={{ padding: "0.4rem 0.75rem", width: 80 }} />
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((entry) => {
+        renderRow={(entry) => {
                 if (entry.type === "expense") {
                   const item = entry.data as LineItem;
                   const editingKey = `${project.id}-${item.id}`;
@@ -1567,11 +1533,8 @@ export function ProjectExpenseLedger({
                     </tr>
                   );
                 }
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+        }}
+      />
 
       <div
         style={{

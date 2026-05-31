@@ -13,6 +13,7 @@ import { officeExpensesRouter } from "./routes/officeExpenses.js";
 import { officeExpenseTypesRouter } from "./routes/officeExpenseTypes.js";
 import { inventoryExpensesRouter } from "./routes/inventoryExpenses.js";
 import { inventoryExpenseTypesRouter } from "./routes/inventoryExpenseTypes.js";
+import { backupRouter } from "./routes/backup.js";
 
 const app = express();
 const PORT = process.env.PORT ?? 3001;
@@ -30,6 +31,7 @@ app.use("/api/office-expenses", officeExpensesRouter);
 app.use("/api/office-expense-types", officeExpenseTypesRouter);
 app.use("/api/inventory-expenses", inventoryExpensesRouter);
 app.use("/api/inventory-expense-types", inventoryExpenseTypesRouter);
+app.use("/api/backup", backupRouter);
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 

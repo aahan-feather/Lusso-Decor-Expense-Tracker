@@ -7,6 +7,33 @@ import {
 } from "../api";
 import { formatDate, formatMoney, todayISO } from "../utils/format";
 import { PencilIcon, TrashIcon } from "lucide-react";
+import {
+  ScrollableSortableTable,
+  type TableColumn,
+} from "../components/ScrollableSortableTable";
+
+type RegisterRowWithBalance = {
+  row: RegisterRow;
+  balance: number;
+};
+
+const BANK_REGISTER_COLUMNS: TableColumn[] = [
+  { header: "Date" },
+  { header: "Type", headerStyle: { minWidth: 140 } },
+  { header: "Description" },
+  { header: "In", headerStyle: { textAlign: "right", whiteSpace: "nowrap" } },
+  { header: "Out", headerStyle: { textAlign: "right", whiteSpace: "nowrap" } },
+  {
+    header: "Balance",
+    headerStyle: { textAlign: "right", whiteSpace: "nowrap" },
+  },
+  { header: "", headerStyle: { width: 80 } },
+];
+
+const sortRegisterRowsBySortAtAsc = (
+  a: RegisterRowWithBalance,
+  b: RegisterRowWithBalance,
+) => a.row.sortAt.localeCompare(b.row.sortAt);
 
 const BANK_CATEGORIES = [
   { value: "", label: "—" },
@@ -35,6 +62,34 @@ function sourceTypeLabel(t: RegisterRow["sourceType"]): string {
   }
 }
 
+function dateKey(iso: string): string {
+  return iso.slice(0, 10);
+}
+
+function formatFilterDate(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return [d, m, y].join("-");
+}
+
+const filterChipStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "0.35rem",
+  padding: "0.35rem 0.6rem",
+  background: "#e8e8e8",
+  border: "1px solid #ccc",
+  borderRadius: 16,
+  fontSize: "0.8rem",
+  cursor: "pointer",
+  color: "#333",
+};
+
+const filterInputStyle: React.CSSProperties = {
+  padding: "0.4rem 0.6rem",
+  border: "1px solid #ccc",
+  borderRadius: 4,
+  fontSize: "0.9rem",
+};
 
 export function BankAccountRegister() {
   const { id } = useParams<{ id: string }>();
@@ -54,6 +109,13 @@ export function BankAccountRegister() {
   const [editDirection, setEditDirection] = useState<"in" | "out">("out");
   const [editDescription, setEditDescription] = useState("");
   const [editCategory, setEditCategory] = useState("");
+
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [typeSearch, setTypeSearch] = useState("");
+  const [descriptionSearch, setDescriptionSearch] = useState("");
+  const [amountMin, setAmountMin] = useState("");
+  const [amountMax, setAmountMax] = useState("");
 
   const load = useCallback(() => {
     if (!id) return;
@@ -171,17 +233,59 @@ export function BankAccountRegister() {
   const pm = data?.paymentMethod;
   const rows = data?.rows ?? [];
 
+  const typeSearchLower = typeSearch.trim().toLowerCase();
+  const descriptionSearchLower = descriptionSearch.trim().toLowerCase();
+  const amountMinNum = amountMin === "" ? null : parseFloat(amountMin);
+  const amountMaxNum = amountMax === "" ? null : parseFloat(amountMax);
+
+  const filteredRows = rows.filter((row) => {
+    const dk = dateKey(row.date);
+    if (dateFrom && dk < dateFrom) return false;
+    if (dateTo && dk > dateTo) return false;
+    if (
+      typeSearchLower &&
+      !sourceTypeLabel(row.sourceType).toLowerCase().includes(typeSearchLower)
+    )
+      return false;
+    if (
+      descriptionSearchLower &&
+      !row.label.toLowerCase().includes(descriptionSearchLower)
+    )
+      return false;
+    if (
+      amountMinNum != null &&
+      !Number.isNaN(amountMinNum) &&
+      row.amount < amountMinNum
+    )
+      return false;
+    if (
+      amountMaxNum != null &&
+      !Number.isNaN(amountMaxNum) &&
+      row.amount > amountMaxNum
+    )
+      return false;
+    return true;
+  });
+
+  const hasActiveFilters =
+    dateFrom ||
+    dateTo ||
+    typeSearch.trim() ||
+    descriptionSearch.trim() ||
+    amountMin ||
+    amountMax;
+
   const rowKey = (row: RegisterRow) => `${row.sourceType}-${row.sourceId}`;
   let running = 0;
   const balanceByRowKey = new Map<string, number>();
-  [...rows]
+  [...filteredRows]
     .sort((a, b) => a.sortAt.localeCompare(b.sortAt))
     .forEach((row) => {
       running += row.direction === "in" ? row.amount : -row.amount;
       balanceByRowKey.set(rowKey(row), running);
     });
-  const rowsWithBalance = [...rows]
-    .sort((a, b) => b.sortAt.localeCompare(a.sortAt))
+  const rowsWithBalance: RegisterRowWithBalance[] = [...filteredRows]
+    .sort((a, b) => a.sortAt.localeCompare(b.sortAt))
     .map((row) => ({
       row,
       balance: balanceByRowKey.get(rowKey(row)) ?? 0,
@@ -248,273 +352,426 @@ export function BankAccountRegister() {
 
       <div
         style={{
-          background: "#fff",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "1rem",
+          alignItems: "center",
+          marginBottom: hasActiveFilters ? "0.5rem" : "1.5rem",
+          padding: "1rem",
+          background: "#f8f8f8",
           borderRadius: 8,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-          overflow: "hidden",
-          width: "100%",
-          flex: 1,
-          minHeight: 0,
-          maxHeight: "calc(100vh - 220px)",
-          overflowY: "auto",
+          border: "1px solid #eee",
         }}
       >
-        <table
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <label
+            style={{ fontSize: "0.85rem", fontWeight: 500, color: "#555" }}
+          >
+            Date from
+          </label>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            style={filterInputStyle}
+          />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <label
+            style={{ fontSize: "0.85rem", fontWeight: 500, color: "#555" }}
+          >
+            Date to
+          </label>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            style={filterInputStyle}
+          />
+        </div>
+        <div
           style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: "0.8125rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            flex: "1 1 140px",
+            minWidth: 140,
           }}
         >
-          <thead>
-            <tr
-              style={{
-                background: "#f8f8f8",
-                textAlign: "left",
-                position: "sticky",
-                top: 0,
-                zIndex: 1,
-                boxShadow: "0 1px 0 0 #eee",
-              }}
+          <label
+            style={{ fontSize: "0.85rem", fontWeight: 500, color: "#555" }}
+          >
+            Type
+          </label>
+          <input
+            type="search"
+            placeholder="Search type…"
+            value={typeSearch}
+            onChange={(e) => setTypeSearch(e.target.value)}
+            style={{ ...filterInputStyle, flex: 1, maxWidth: 180 }}
+          />
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            flex: "1 1 180px",
+            minWidth: 180,
+          }}
+        >
+          <label
+            style={{ fontSize: "0.85rem", fontWeight: 500, color: "#555" }}
+          >
+            Description
+          </label>
+          <input
+            type="search"
+            placeholder="Search description…"
+            value={descriptionSearch}
+            onChange={(e) => setDescriptionSearch(e.target.value)}
+            style={{ ...filterInputStyle, flex: 1, maxWidth: 240 }}
+          />
+        </div>
+        <div
+          style={{
+            display: "flex",
+            gap: "0.5rem",
+            flexDirection: "column",
+            alignItems: "flex-start",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <label
+              style={{ fontSize: "0.85rem", fontWeight: 500, color: "#555" }}
             >
-              <th style={cellPad}>Date</th>
-              <th style={{ ...cellPad, minWidth: 140 }}>Type</th>
-              <th style={cellPad}>Description</th>
-              <th style={{ ...cellPad, textAlign: "right", whiteSpace: "nowrap" }}>In</th>
-              <th style={{ ...cellPad, textAlign: "right", whiteSpace: "nowrap" }}>Out</th>
-              <th style={{ ...cellPad, textAlign: "right", whiteSpace: "nowrap" }}>Balance</th>
-              <th style={{ ...cellPad, width: 80 }} />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={7}
-                  style={{
-                    ...cellPad,
-                    padding: "1.25rem 0.75rem",
-                    textAlign: "center",
-                    color: "#666",
-                  }}
-                >
-                  No movements yet for this account. Record payments elsewhere
-                  with this method, or add a bank-only line below.
-                </td>
-              </tr>
-            ) : (
-              rowsWithBalance.map(({ row, balance }) => {
-                const isEdit =
-                  editingId === row.sourceId && row.sourceType === "bank_only";
-                if (isEdit) {
-                  return (
-                    <tr
-                      key={`${row.sourceType}-${row.sourceId}`}
-                      style={{ borderTop: "1px solid #eee" }}
-                    >
-                      <td colSpan={7} style={cellPad}>
-                        <form
-                          onSubmit={handleSaveEdit}
-                          style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            gap: "0.5rem",
-                            alignItems: "flex-end",
-                          }}
-                        >
-                          <label style={{ fontSize: "0.8125rem" }}>
-                            Date
-                            <input
-                              type="date"
-                              value={editDate}
-                              onChange={(e) => setEditDate(e.target.value)}
-                              required
-                              style={{
-                                ...tableInput,
-                                display: "block",
-                                marginTop: 4,
-                              }}
-                            />
-                          </label>
-                          <label style={{ fontSize: "0.8125rem" }}>
-                            Amount
-                            <input
-                              type="number"
-                              min={0.01}
-                              step={0.01}
-                              value={editAmount}
-                              onChange={(e) => setEditAmount(e.target.value)}
-                              required
-                              style={{
-                                ...tableInput,
-                                display: "block",
-                                marginTop: 4,
-                                width: 90,
-                              }}
-                            />
-                          </label>
-                          <label style={{ fontSize: "0.8125rem" }}>
-                            Direction
-                            <select
-                              value={editDirection}
-                              onChange={(e) =>
-                                setEditDirection(e.target.value as "in" | "out")
-                              }
-                              style={{
-                                ...tableInput,
-                                display: "block",
-                                marginTop: 4,
-                                minWidth: 100,
-                              }}
-                            >
-                              <option value="out">Out</option>
-                              <option value="in">In</option>
-                            </select>
-                          </label>
-                          <label
-                            style={{
-                              flex: "1 1 180px",
-                              minWidth: 140,
-                              fontSize: "0.8125rem",
-                            }}
-                          >
-                            Description
-                            <input
-                              value={editDescription}
-                              onChange={(e) =>
-                                setEditDescription(e.target.value)
-                              }
-                              required
-                              style={{
-                                ...tableInput,
-                                display: "block",
-                                marginTop: 4,
-                                width: "100%",
-                              }}
-                            />
-                          </label>
-                          <label style={{ fontSize: "0.8125rem" }}>
-                            Category
-                            <select
-                              value={editCategory}
-                              onChange={(e) => setEditCategory(e.target.value)}
-                              style={{
-                                ...tableInput,
-                                display: "block",
-                                marginTop: 4,
-                                minWidth: 120,
-                              }}
-                            >
-                              {BANK_CATEGORIES.map((c) => (
-                                <option key={c.value || "none"} value={c.value}>
-                                  {c.label}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <button
-                            type="submit"
-                            style={{
-                              marginRight: 8,
-                              padding: "0.35rem 0.6rem",
-                              fontSize: "0.85rem",
-                              background: "#1a1a1a",
-                              color: "#fff",
-                              borderRadius: 4,
-                              border: "none",
-                              cursor: "pointer",
-                            }}
-                          >
-                            Save
-                          </button>
-                          <button
-                            type="button"
-                            onClick={cancelEdit}
-                            style={{ fontSize: "0.85rem", color: "#666" }}
-                          >
-                            Cancel
-                          </button>
-                        </form>
-                      </td>
-                    </tr>
-                  );
-                }
+              Amount min
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              placeholder="0"
+              value={amountMin}
+              onChange={(e) => setAmountMin(e.target.value)}
+              style={{ ...filterInputStyle, width: 90 }}
+            />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <label
+              style={{ fontSize: "0.85rem", fontWeight: 500, color: "#555" }}
+            >
+              Amount max
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              placeholder="—"
+              value={amountMax}
+              onChange={(e) => setAmountMax(e.target.value)}
+              style={{ ...filterInputStyle, width: 90 }}
+            />
+          </div>
+        </div>
+      </div>
 
-                return (
-                  <tr
-                    key={`${row.sourceType}-${row.sourceId}`}
+      {hasActiveFilters && (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "0.5rem",
+            alignItems: "center",
+            marginBottom: "1.5rem",
+            paddingLeft: "1rem",
+          }}
+        >
+          {dateFrom && (
+            <button
+              type="button"
+              onClick={() => setDateFrom("")}
+              style={filterChipStyle}
+              title="Remove date from filter"
+            >
+              From: {formatFilterDate(dateFrom)}
+              <span style={{ opacity: 0.7 }}>×</span>
+            </button>
+          )}
+          {dateTo && (
+            <button
+              type="button"
+              onClick={() => setDateTo("")}
+              style={filterChipStyle}
+              title="Remove date to filter"
+            >
+              To: {formatFilterDate(dateTo)}
+              <span style={{ opacity: 0.7 }}>×</span>
+            </button>
+          )}
+          {typeSearch.trim() && (
+            <button
+              type="button"
+              onClick={() => setTypeSearch("")}
+              style={filterChipStyle}
+              title="Remove type filter"
+            >
+              Type: {typeSearch.trim()}
+              <span style={{ opacity: 0.7 }}>×</span>
+            </button>
+          )}
+          {descriptionSearch.trim() && (
+            <button
+              type="button"
+              onClick={() => setDescriptionSearch("")}
+              style={filterChipStyle}
+              title="Remove description filter"
+            >
+              Description: {descriptionSearch.trim()}
+              <span style={{ opacity: 0.7 }}>×</span>
+            </button>
+          )}
+          {amountMin && (
+            <button
+              type="button"
+              onClick={() => setAmountMin("")}
+              style={filterChipStyle}
+              title="Remove amount min filter"
+            >
+              Min: {amountMin}
+              <span style={{ opacity: 0.7 }}>×</span>
+            </button>
+          )}
+          {amountMax && (
+            <button
+              type="button"
+              onClick={() => setAmountMax("")}
+              style={filterChipStyle}
+              title="Remove amount max filter"
+            >
+              Max: {amountMax}
+              <span style={{ opacity: 0.7 }}>×</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      <ScrollableSortableTable
+        items={rowsWithBalance}
+        sortCompare={sortRegisterRowsBySortAtAsc}
+        columns={BANK_REGISTER_COLUMNS}
+        scrollDeps={[id, loading]}
+        emptyMessage={
+          rows.length === 0
+            ? "No movements yet for this account. Record payments elsewhere with this method, or add a bank-only line below."
+            : "No entries match your filters."
+        }
+        emptyInTable={rows.length > 0}
+        renderRow={({ row, balance }) => {
+          const isEdit =
+            editingId === row.sourceId && row.sourceType === "bank_only";
+          if (isEdit) {
+            return (
+              <tr
+                key={`${row.sourceType}-${row.sourceId}`}
+                style={{ borderTop: "1px solid #eee" }}
+              >
+                <td colSpan={7} style={cellPad}>
+                  <form
+                    onSubmit={handleSaveEdit}
                     style={{
-                      borderTop: "1px solid #eee",
-                      verticalAlign: "top",
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "0.5rem",
+                      alignItems: "flex-end",
                     }}
                   >
-                    <td style={{ ...cellPad, whiteSpace: "nowrap" }}>
-                      {formatDate(row.date)}
-                    </td>
-                    <td style={{ ...cellPad, color: "#444" }}>
-                      {sourceTypeLabel(row.sourceType)}
-                    </td>
-                    <td style={{ ...cellPad, wordBreak: "break-word" }}>{row.label}</td>
-                    <td style={{ ...cellPad, textAlign: "right", whiteSpace: "nowrap" }}>
-                      {row.direction === "in" ? formatMoney(row.amount) : "—"}
-                    </td>
-                    <td style={{ ...cellPad, textAlign: "right", whiteSpace: "nowrap" }}>
-                      {row.direction === "out" ? formatMoney(row.amount) : "—"}
-                    </td>
-                    <td
+                    <label style={{ fontSize: "0.8125rem" }}>
+                      Date
+                      <input
+                        type="date"
+                        value={editDate}
+                        onChange={(e) => setEditDate(e.target.value)}
+                        required
+                        style={{
+                          ...tableInput,
+                          display: "block",
+                          marginTop: 4,
+                        }}
+                      />
+                    </label>
+                    <label style={{ fontSize: "0.8125rem" }}>
+                      Amount
+                      <input
+                        type="number"
+                        min={0.01}
+                        step={0.01}
+                        value={editAmount}
+                        onChange={(e) => setEditAmount(e.target.value)}
+                        required
+                        style={{
+                          ...tableInput,
+                          display: "block",
+                          marginTop: 4,
+                          width: 90,
+                        }}
+                      />
+                    </label>
+                    <label style={{ fontSize: "0.8125rem" }}>
+                      Direction
+                      <select
+                        value={editDirection}
+                        onChange={(e) =>
+                          setEditDirection(e.target.value as "in" | "out")
+                        }
+                        style={{
+                          ...tableInput,
+                          display: "block",
+                          marginTop: 4,
+                          minWidth: 100,
+                        }}
+                      >
+                        <option value="out">Out</option>
+                        <option value="in">In</option>
+                      </select>
+                    </label>
+                    <label
                       style={{
-                        ...cellPad,
-                        textAlign: "right",
-                        fontWeight: 500,
-                        whiteSpace: "nowrap",
+                        flex: "1 1 180px",
+                        minWidth: 140,
+                        fontSize: "0.8125rem",
                       }}
                     >
-                      {formatMoney(balance)}
-                    </td>
-                    <td style={cellPad}>
-                      {row.sourceType === "bank_only" ? (
-                        <div style={{ display: "flex", gap: "0.5rem" }}>
-                          <button
-                            type="button"
-                            onClick={() => startEditBankOnly(row)}
-                            title="Edit"
-                            style={{
-                              marginRight: 8,
-                              fontSize: "0.85rem",
-                              color: "#1a1a1a",
-                              background: "none",
-                              border: "none",
-                              cursor: "pointer",
-                              padding: 0,
-                            }}
-                          >
-                            <PencilIcon size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            title="Delete"
-                            onClick={() => handleDeleteBankOnly(row.sourceId)}
-                            style={{
-                              color: "#c00",
-                              fontSize: "0.85rem",
-                              background: "none",
-                              border: "none",
-                              cursor: "pointer",
-                              padding: 0,
-                            }}
-                          >
-                            <TrashIcon size={14} />
-                          </button>
-                        </div>
-                      ) : null}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+                      Description
+                      <input
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        required
+                        style={{
+                          ...tableInput,
+                          display: "block",
+                          marginTop: 4,
+                          width: "100%",
+                        }}
+                      />
+                    </label>
+                    <label style={{ fontSize: "0.8125rem" }}>
+                      Category
+                      <select
+                        value={editCategory}
+                        onChange={(e) => setEditCategory(e.target.value)}
+                        style={{
+                          ...tableInput,
+                          display: "block",
+                          marginTop: 4,
+                          minWidth: 120,
+                        }}
+                      >
+                        {BANK_CATEGORIES.map((c) => (
+                          <option key={c.value || "none"} value={c.value}>
+                            {c.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="submit"
+                      style={{
+                        marginRight: 8,
+                        padding: "0.35rem 0.6rem",
+                        fontSize: "0.85rem",
+                        background: "#1a1a1a",
+                        color: "#fff",
+                        borderRadius: 4,
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelEdit}
+                      style={{ fontSize: "0.85rem", color: "#666" }}
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            );
+          }
+
+          return (
+            <tr
+              key={`${row.sourceType}-${row.sourceId}`}
+              style={{
+                borderTop: "1px solid #eee",
+                verticalAlign: "top",
+              }}
+            >
+              <td style={{ ...cellPad, whiteSpace: "nowrap" }}>
+                {formatDate(row.date)}
+              </td>
+              <td style={{ ...cellPad, color: "#444" }}>
+                {sourceTypeLabel(row.sourceType)}
+              </td>
+              <td style={{ ...cellPad, wordBreak: "break-word" }}>{row.label}</td>
+              <td style={{ ...cellPad, textAlign: "right", whiteSpace: "nowrap" }}>
+                {row.direction === "in" ? formatMoney(row.amount) : "—"}
+              </td>
+              <td style={{ ...cellPad, textAlign: "right", whiteSpace: "nowrap" }}>
+                {row.direction === "out" ? formatMoney(row.amount) : "—"}
+              </td>
+              <td
+                style={{
+                  ...cellPad,
+                  textAlign: "right",
+                  fontWeight: 500,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {formatMoney(balance)}
+              </td>
+              <td style={cellPad}>
+                {row.sourceType === "bank_only" ? (
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <button
+                      type="button"
+                      onClick={() => startEditBankOnly(row)}
+                      title="Edit"
+                      style={{
+                        marginRight: 8,
+                        fontSize: "0.85rem",
+                        color: "#1a1a1a",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      <PencilIcon size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      title="Delete"
+                      onClick={() => handleDeleteBankOnly(row.sourceId)}
+                      style={{
+                        color: "#c00",
+                        fontSize: "0.85rem",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      <TrashIcon size={14} />
+                    </button>
+                  </div>
+                ) : null}
+              </td>
+            </tr>
+          );
+        }}
+      />
 
       <div
         style={{

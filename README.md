@@ -60,3 +60,9 @@ See **[DEPLOY.md](./DEPLOY.md)** for Render (Docker + managed Postgres) and note
 - **`server/`** — Express API, Prisma schema & migrations  
 - **`Dockerfile`** — production image  
 - **`render.yaml`** — Render Blueprint (DB + web service)
+
+## Database changes & backups
+
+The dashboard **Export backup** button downloads all database rows as a zip (`GET /api/backup/export`). Export includes every Prisma model automatically.
+
+If you change the schema (human or coding agent), follow **[AGENTS.md](./AGENTS.md)** — especially migrate, `npm run db:generate`, and any API/UI updates.

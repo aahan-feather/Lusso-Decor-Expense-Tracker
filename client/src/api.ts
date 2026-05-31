@@ -82,7 +82,11 @@ export type VendorItem = {
   date: string;
   vendorId: string;
   lineItemId: string | null;
+  inventoryExpenseId?: string | null;
   lineItem?: { project?: { name: string } } | null;
+  inventoryExpense?: {
+    inventoryExpenseType?: { name: string } | null;
+  } | null;
 };
 
 export type VendorPaymentAllocation = {
@@ -214,6 +218,11 @@ export type InventoryExpense = {
   createdAt?: string;
   paymentMethod?: { id: string; name: string; type: string } | null;
   inventoryExpenseType?: { id: string; name: string } | null;
+  vendorItem?: {
+    id: string;
+    vendorId: string;
+    vendor?: { id: string; name: string };
+  } | null;
 };
 
 export type ExpensesAndPaymentsProject = Project & {
@@ -223,6 +232,25 @@ export type ExpensesAndPaymentsProject = Project & {
 
 export const api = {
   dashboard: () => request<DashboardData>("/dashboard"),
+
+  exportBackup: async () => {
+    const res = await fetch(`${BASE}/backup/export`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error((err as { error?: string }).error ?? "Failed to export backup");
+    }
+    const blob = await res.blob();
+    const disposition = res.headers.get("Content-Disposition");
+    let filename = "Accounts Tracker Backup.zip";
+    const match = disposition?.match(/filename="(.+)"/);
+    if (match?.[1]) filename = match[1];
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  },
 
   expensesAndPayments: () => request<ExpensesAndPaymentsProject[]>("/expenses-and-payments"),
 
@@ -406,6 +434,7 @@ export const api = {
       amount: number;
       date?: string;
       paymentMethodId?: string | null;
+      vendorId?: string | null;
       inventoryExpenseTypeId: string;
     }) =>
       request<InventoryExpense>("/inventory-expenses", {
@@ -419,6 +448,7 @@ export const api = {
         amount?: number;
         date?: string;
         paymentMethodId?: string | null;
+        vendorId?: string | null;
         inventoryExpenseTypeId?: string | null;
       },
     ) =>

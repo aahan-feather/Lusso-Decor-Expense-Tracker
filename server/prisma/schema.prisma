@@ -1,3 +1,5 @@
+// Database models. When adding/removing models, see AGENTS.md — backup export
+// picks up all models automatically after migrate + prisma generate.
 generator client {
   provider      = "prisma-client-js"
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
@@ -143,6 +145,7 @@ model InventoryExpense {
   paymentMethod         PaymentMethod?         @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
   inventoryExpenseType  InventoryExpenseType?  @relation(fields: [inventoryExpenseTypeId], references: [id], onDelete: SetNull)
   lineItem              LineItem?            @relation("InventoryUsageFromLineItem", fields: [lineItemId], references: [id], onDelete: Cascade)
+  vendorItem            VendorItem?
 
   @@map("InventoryExpense")
 }
@@ -176,17 +179,19 @@ model Vendor {
 }
 
 model VendorItem {
-  id         String   @id @default(cuid())
-  description String
-  amount     Float
-  date       DateTime @default(now())
-  vendorId   String
-  lineItemId String?  // optional: link to project line item
-  createdAt  DateTime @default(now())
+  id                 String   @id @default(cuid())
+  description        String
+  amount             Float
+  date               DateTime @default(now())
+  vendorId           String
+  lineItemId         String?  // optional: link to project line item
+  inventoryExpenseId String?  @unique // optional: link to inventory purchase
+  createdAt          DateTime @default(now())
 
-  vendor     Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  lineItem   LineItem? @relation(fields: [lineItemId], references: [id], onDelete: SetNull)
-  allocations VendorPaymentAllocation[]
+  vendor           Vendor            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  lineItem         LineItem?         @relation(fields: [lineItemId], references: [id], onDelete: SetNull)
+  inventoryExpense InventoryExpense? @relation(fields: [inventoryExpenseId], references: [id], onDelete: Cascade)
+  allocations      VendorPaymentAllocation[]
 }
 
 model VendorPayment {

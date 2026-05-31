@@ -116,7 +116,10 @@ projectsRouter.post("/", async (req, res) => {
     if (Number.isNaN(projectDate.getTime()))
       return res.status(400).json({ error: "Invalid date" });
     const validType = type === "Quotation" || type === "Invoice" ? type : null;
-    const validStatus = status === "Running" || status === "Due" || status === "Closed" ? status : null;
+    const validStatus =
+      status === "Running" || status === "Due" || status === "Closed"
+        ? status
+        : "Running";
     const project = await prisma.project.create({
       data: {
         name: name.trim(),
@@ -126,7 +129,7 @@ projectsRouter.post("/", async (req, res) => {
         contactPerson2Name: contactPerson2Name?.trim() ?? null,
         contactPerson2Phone: contactPerson2Phone?.trim() ?? null,
         ...(validType && { type: validType }),
-        ...(validStatus && { status: validStatus }),
+        status: validStatus,
         ...(documentRef !== undefined && { documentRef: documentRef?.trim() ?? null }),
         ...(details !== undefined && {
           details: details == null || String(details).trim() === "" ? null : String(details).trim(),
@@ -252,7 +255,7 @@ projectsRouter.post("/:id/line-items", async (req, res) => {
       : amount != null
         ? Number(amount)
         : null;
-    if (totalAmount == null || totalAmount < 0) {
+    if (totalAmount == null || !Number.isFinite(totalAmount)) {
       return res
         .status(400)
         .json({ error: "Amount or both rate and qty are required" });

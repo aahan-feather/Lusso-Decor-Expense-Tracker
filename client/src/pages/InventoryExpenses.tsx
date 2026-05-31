@@ -14,6 +14,7 @@ import {
   type InventoryExpense,
   type InventoryExpenseType,
   type PaymentMethod,
+  type Vendor,
 } from "../api";
 import {
   formatDate,
@@ -23,6 +24,27 @@ import {
   parseDateInput,
 } from "../utils/format";
 import { PencilIcon, TrashIcon } from "lucide-react";
+import {
+  ScrollableSortableTable,
+  type TableColumn,
+} from "../components/ScrollableSortableTable";
+
+const INVENTORY_TABLE_COLUMNS: TableColumn[] = [
+  { header: "Date" },
+  { header: "Inventory item" },
+  { header: "Purchased", headerStyle: { textAlign: "right" } },
+  { header: "Used", headerStyle: { textAlign: "right" } },
+  { header: "Payment mode" },
+  { header: "Description" },
+  { header: "", headerStyle: { width: 80 } },
+];
+
+const sortInventoryByDateAsc = (a: InventoryExpense, b: InventoryExpense) =>
+  new Date(a.date).getTime() - new Date(b.date).getTime();
+
+const PAY_TYPE_BANK = "bank";
+const PAY_TYPE_VENDOR = "vendor";
+const PAY_FILTER_VENDOR_PREFIX = "vendor:";
 
 type InventoryExpenseTypeComboboxProps = {
   types: InventoryExpenseType[];
@@ -279,12 +301,17 @@ export function InventoryExpenses() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [inventoryTypes, setInventoryTypes] = useState<InventoryExpenseType[]>([]);
 
   const [manualDesc, setManualDesc] = useState("");
   const [manualAmount, setManualAmount] = useState("");
   const [manualDate, setManualDate] = useState(() => todayDisplay());
+  const [manualPaymentType, setManualPaymentType] = useState<
+    typeof PAY_TYPE_BANK | typeof PAY_TYPE_VENDOR | ""
+  >("");
   const [manualPaymentMethodId, setManualPaymentMethodId] = useState("");
+  const [manualVendorId, setManualVendorId] = useState("");
   const [manualInventoryExpenseTypeId, setManualInventoryExpenseTypeId] =
     useState("");
 
@@ -304,7 +331,11 @@ export function InventoryExpenses() {
   const [editDesc, setEditDesc] = useState("");
   const [editAmount, setEditAmount] = useState("");
   const [editDate, setEditDate] = useState("");
+  const [editPaymentType, setEditPaymentType] = useState<
+    typeof PAY_TYPE_BANK | typeof PAY_TYPE_VENDOR | ""
+  >("");
   const [editPaymentMethodId, setEditPaymentMethodId] = useState("");
+  const [editVendorId, setEditVendorId] = useState("");
   const [editInventoryExpenseTypeId, setEditInventoryExpenseTypeId] = useState("");
 
   const [dateFrom, setDateFrom] = useState("");
@@ -328,6 +359,10 @@ export function InventoryExpenses() {
     api.paymentMethods
       .list()
       .then(setPaymentMethods)
+      .catch(() => {});
+    api.vendors
+      .list()
+      .then(setVendors)
       .catch(() => {});
     api.inventoryExpenseTypes
       .list()
@@ -437,6 +472,14 @@ export function InventoryExpenses() {
       setError("Choose an inventory item.");
       return;
     }
+    if (manualPaymentType === PAY_TYPE_BANK && !manualPaymentMethodId.trim()) {
+      setError("Choose a bank account.");
+      return;
+    }
+    if (manualPaymentType === PAY_TYPE_VENDOR && !manualVendorId.trim()) {
+      setError("Choose a vendor.");
+      return;
+    }
     try {
       setError(null);
       const dateISO = manualDate
@@ -446,13 +489,22 @@ export function InventoryExpenses() {
         description: manualDesc.trim(),
         amount: parseFloat(manualAmount),
         date: dateISO,
-        paymentMethodId: manualPaymentMethodId.trim() || null,
+        paymentMethodId:
+          manualPaymentType === PAY_TYPE_BANK
+            ? manualPaymentMethodId.trim() || null
+            : null,
+        vendorId:
+          manualPaymentType === PAY_TYPE_VENDOR
+            ? manualVendorId.trim() || null
+            : null,
         inventoryExpenseTypeId: manualInventoryExpenseTypeId.trim(),
       });
       setManualDesc("");
       setManualAmount("");
       setManualDate(todayDisplay());
+      setManualPaymentType("");
       setManualPaymentMethodId("");
+      setManualVendorId("");
       setManualInventoryExpenseTypeId("");
       load();
     } catch (err) {
@@ -477,7 +529,19 @@ export function InventoryExpenses() {
     setEditDesc(row.description);
     setEditAmount(String(row.amount));
     setEditDate(formatDate(row.date));
-    setEditPaymentMethodId(row.paymentMethodId ?? "");
+    if (row.vendorItem?.vendorId) {
+      setEditPaymentType(PAY_TYPE_VENDOR);
+      setEditVendorId(row.vendorItem.vendorId);
+      setEditPaymentMethodId("");
+    } else if (row.paymentMethodId) {
+      setEditPaymentType(PAY_TYPE_BANK);
+      setEditPaymentMethodId(row.paymentMethodId);
+      setEditVendorId("");
+    } else {
+      setEditPaymentType("");
+      setEditPaymentMethodId("");
+      setEditVendorId("");
+    }
     setEditInventoryExpenseTypeId(row.inventoryExpenseTypeId ?? "");
   };
 
@@ -486,7 +550,9 @@ export function InventoryExpenses() {
     setEditDesc("");
     setEditAmount("");
     setEditDate("");
+    setEditPaymentType("");
     setEditPaymentMethodId("");
+    setEditVendorId("");
     setEditInventoryExpenseTypeId("");
   };
 
@@ -495,6 +561,14 @@ export function InventoryExpenses() {
     if (!editingId || !editDesc.trim() || editAmount === "") return;
     if (!editInventoryExpenseTypeId.trim()) {
       setError("Choose an inventory item.");
+      return;
+    }
+    if (editPaymentType === PAY_TYPE_BANK && !editPaymentMethodId.trim()) {
+      setError("Choose a bank account.");
+      return;
+    }
+    if (editPaymentType === PAY_TYPE_VENDOR && !editVendorId.trim()) {
+      setError("Choose a vendor.");
       return;
     }
     try {
@@ -506,7 +580,14 @@ export function InventoryExpenses() {
         description: editDesc.trim(),
         amount: parseFloat(editAmount),
         date: dateISO,
-        paymentMethodId: editPaymentMethodId.trim() || null,
+        paymentMethodId:
+          editPaymentType === PAY_TYPE_BANK
+            ? editPaymentMethodId.trim() || null
+            : null,
+        vendorId:
+          editPaymentType === PAY_TYPE_VENDOR
+            ? editVendorId.trim() || null
+            : null,
         inventoryExpenseTypeId: editInventoryExpenseTypeId.trim(),
       });
       cancelEdit();
@@ -517,6 +598,21 @@ export function InventoryExpenses() {
   };
 
   if (loading && items.length === 0) return <p>Loading…</p>;
+
+  const vendorNeedsVendor =
+    manualPaymentType === PAY_TYPE_VENDOR && !manualVendorId.trim();
+  const bankNeedsAccount =
+    manualPaymentType === PAY_TYPE_BANK && !manualPaymentMethodId.trim();
+  const paymentTypeInvalid = !manualPaymentType;
+  const canAddManual =
+    manualDate.trim() !== "" &&
+    manualInventoryExpenseTypeId.trim() !== "" &&
+    manualDesc.trim() !== "" &&
+    manualAmount.trim() !== "" &&
+    !Number.isNaN(parseFloat(manualAmount)) &&
+    !paymentTypeInvalid &&
+    !vendorNeedsVendor &&
+    !bankNeedsAccount;
 
   const totalAll = items.reduce((s, i) => s + i.amount, 0);
   const totalPurchasedAll = sumPurchased(items);
@@ -541,11 +637,14 @@ export function InventoryExpenses() {
       row.amount > expenseMaxNum
     )
       return false;
-    if (
-      paymentModeFilter &&
-      (row.paymentMethodId ?? "") !== paymentModeFilter
-    )
-      return false;
+    if (paymentModeFilter) {
+      if (paymentModeFilter.startsWith(PAY_FILTER_VENDOR_PREFIX)) {
+        const vendorId = paymentModeFilter.slice(PAY_FILTER_VENDOR_PREFIX.length);
+        if ((row.vendorItem?.vendorId ?? "") !== vendorId) return false;
+      } else if ((row.paymentMethodId ?? "") !== paymentModeFilter) {
+        return false;
+      }
+    }
     if (typeFilter && (row.inventoryExpenseTypeId ?? "") !== typeFilter)
       return false;
     return true;
@@ -820,11 +919,20 @@ export function InventoryExpenses() {
             }}
           >
             <option value="">All</option>
-            {paymentMethods.map((pm) => (
-              <option key={pm.id} value={pm.id}>
-                {pm.name}
-              </option>
-            ))}
+            <optgroup label="Bank accounts">
+              {paymentMethods.map((pm) => (
+                <option key={pm.id} value={pm.id}>
+                  {pm.name}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Vendors">
+              {vendors.map((v) => (
+                <option key={v.id} value={`${PAY_FILTER_VENDOR_PREFIX}${v.id}`}>
+                  {v.name}
+                </option>
+              ))}
+            </optgroup>
           </select>
         </div>
 
@@ -976,8 +1084,14 @@ export function InventoryExpenses() {
               }}
             >
               Payment:{" "}
-              {paymentMethods.find((pm) => pm.id === paymentModeFilter)?.name ??
-                paymentModeFilter}
+              {paymentModeFilter.startsWith(PAY_FILTER_VENDOR_PREFIX)
+                ? (vendors.find(
+                    (v) =>
+                      v.id ===
+                      paymentModeFilter.slice(PAY_FILTER_VENDOR_PREFIX.length),
+                  )?.name ?? "Vendor")
+                : (paymentMethods.find((pm) => pm.id === paymentModeFilter)
+                    ?.name ?? "Bank")}
               <span style={{ opacity: 0.7 }}>×</span>
             </button>
           )}
@@ -1006,71 +1120,22 @@ export function InventoryExpenses() {
         </div>
       )}
 
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 8,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-          overflow: "hidden",
-          width: "100%",
-          flex: "1",
-          maxHeight: "calc(100% - 320px)",
-          overflowY: "auto",
-        }}
-      >
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: "0.8125rem",
-          }}
-        >
-          <thead>
-            <tr
-              style={{
-                background: "#f8f8f8",
-                textAlign: "left",
-                position: "sticky",
-                top: 0,
-                zIndex: 1,
-                boxShadow: "0 1px 0 0 #eee",
-              }}
-            >
-              <th style={{ padding: "0.4rem 0.75rem" }}>Date</th>
-              <th style={{ padding: "0.4rem 0.75rem" }}>Inventory item</th>
-              <th style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
-                Purchased
-              </th>
-              <th style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
-                Used
-              </th>
-              <th style={{ padding: "0.4rem 0.75rem" }}>Payment mode</th>
-              <th style={{ padding: "0.4rem 0.75rem" }}>Description</th>
-              <th style={{ padding: "0.4rem 0.75rem", width: 80 }} />
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={7}
-                  style={{
-                    padding: "1.25rem 0.75rem",
-                    textAlign: "center",
-                    color: "#666",
-                  }}
-                >
-                  {items.length === 0
-                    ? "No inventory entries yet. Add one below."
-                    : "No entries match your filters."}
-                </td>
-              </tr>
-            ) : (
-              filtered.map((row) => {
-                const isEditing = row.id === editingId;
-                if (isEditing) {
-                  return (
-                    <tr key={row.id} style={{ borderTop: "1px solid #eee" }}>
+      <ScrollableSortableTable
+        items={filtered}
+        sortCompare={sortInventoryByDateAsc}
+        columns={INVENTORY_TABLE_COLUMNS}
+        scrollDeps={[loading]}
+        emptyMessage={
+          items.length === 0
+            ? "No inventory entries yet. Add one below."
+            : "No entries match your filters."
+        }
+        emptyInTable={items.length > 0}
+        renderRow={(row) => {
+          const isEditing = row.id === editingId;
+          if (isEditing) {
+            return (
+              <tr key={row.id} style={{ borderTop: "1px solid #eee" }}>
                       <td style={{ padding: "0.4rem 0.75rem" }}>
                         <input
                           type="text"
@@ -1149,10 +1214,16 @@ export function InventoryExpenses() {
                       </td>
                       <td style={{ padding: "0.4rem 0.75rem" }}>
                         <select
-                          value={editPaymentMethodId}
-                          onChange={(e) =>
-                            setEditPaymentMethodId(e.target.value)
-                          }
+                          value={editPaymentType}
+                          onChange={(e) => {
+                            const v = e.target.value as
+                              | typeof PAY_TYPE_BANK
+                              | typeof PAY_TYPE_VENDOR
+                              | "";
+                            setEditPaymentType(v);
+                            if (v !== PAY_TYPE_BANK) setEditPaymentMethodId("");
+                            if (v !== PAY_TYPE_VENDOR) setEditVendorId("");
+                          }}
                           style={{
                             padding: "0.4rem",
                             border: "1px solid #ccc",
@@ -1161,12 +1232,51 @@ export function InventoryExpenses() {
                           }}
                         >
                           <option value="">Mode of payment</option>
-                          {paymentMethods.map((pm) => (
-                            <option key={pm.id} value={pm.id}>
-                              {pm.name}
-                            </option>
-                          ))}
+                          <option value={PAY_TYPE_BANK}>Bank accounts</option>
+                          <option value={PAY_TYPE_VENDOR}>Vendor</option>
                         </select>
+                        {editPaymentType === PAY_TYPE_BANK && (
+                          <select
+                            value={editPaymentMethodId}
+                            onChange={(e) =>
+                              setEditPaymentMethodId(e.target.value)
+                            }
+                            style={{
+                              padding: "0.4rem",
+                              border: "1px solid #ccc",
+                              borderRadius: 4,
+                              minWidth: 120,
+                              marginTop: 6,
+                            }}
+                          >
+                            <option value="">Choose a bank account</option>
+                            {paymentMethods.map((pm) => (
+                              <option key={pm.id} value={pm.id}>
+                                {pm.name}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        {editPaymentType === PAY_TYPE_VENDOR && (
+                          <select
+                            value={editVendorId}
+                            onChange={(e) => setEditVendorId(e.target.value)}
+                            style={{
+                              padding: "0.4rem",
+                              border: "1px solid #ccc",
+                              borderRadius: 4,
+                              minWidth: 120,
+                              marginTop: 6,
+                            }}
+                          >
+                            <option value="">Choose a vendor</option>
+                            {vendors.map((v) => (
+                              <option key={v.id} value={v.id}>
+                                {v.name}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                       </td>
                       <td style={{ padding: "0.4rem 0.75rem" }}>
                         <input
@@ -1236,7 +1346,9 @@ export function InventoryExpenses() {
                         : "—"}
                     </td>
                     <td style={{ padding: "0.4rem 0.75rem" }}>
-                      {row.paymentMethod?.name ?? "—"}
+                      {row.vendorItem?.vendor?.name ??
+                        row.paymentMethod?.name ??
+                        "—"}
                     </td>
                     <td style={{ padding: "0.4rem 0.75rem" }}>
                       {row.description}
@@ -1274,11 +1386,8 @@ export function InventoryExpenses() {
                     </td>
                   </tr>
                 );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+        }}
+      />
 
       <div
         style={{
@@ -1372,8 +1481,16 @@ export function InventoryExpenses() {
             }}
           />
           <select
-            value={manualPaymentMethodId}
-            onChange={(e) => setManualPaymentMethodId(e.target.value)}
+            value={manualPaymentType}
+            onChange={(e) => {
+              const v = e.target.value as
+                | typeof PAY_TYPE_BANK
+                | typeof PAY_TYPE_VENDOR
+                | "";
+              setManualPaymentType(v);
+              if (v !== PAY_TYPE_BANK) setManualPaymentMethodId("");
+              if (v !== PAY_TYPE_VENDOR) setManualVendorId("");
+            }}
             style={{
               padding: "0.5rem",
               border: "1px solid #ccc",
@@ -1382,20 +1499,58 @@ export function InventoryExpenses() {
             }}
           >
             <option value="">Mode of payment</option>
-            {paymentMethods.map((pm) => (
-              <option key={pm.id} value={pm.id}>
-                {pm.name}
-              </option>
-            ))}
+            <option value={PAY_TYPE_BANK}>Bank accounts</option>
+            <option value={PAY_TYPE_VENDOR}>Vendor</option>
           </select>
+          {manualPaymentType === PAY_TYPE_BANK && (
+            <select
+              value={manualPaymentMethodId}
+              onChange={(e) => setManualPaymentMethodId(e.target.value)}
+              style={{
+                padding: "0.5rem",
+                border: "1px solid #ccc",
+                borderRadius: 4,
+                minWidth: 120,
+              }}
+            >
+              <option value="">Choose a bank account</option>
+              {paymentMethods.map((pm) => (
+                <option key={pm.id} value={pm.id}>
+                  {pm.name}
+                </option>
+              ))}
+            </select>
+          )}
+          {manualPaymentType === PAY_TYPE_VENDOR && (
+            <select
+              value={manualVendorId}
+              onChange={(e) => setManualVendorId(e.target.value)}
+              style={{
+                padding: "0.5rem",
+                border: "1px solid #ccc",
+                borderRadius: 4,
+                minWidth: 120,
+              }}
+            >
+              <option value="">Choose a vendor</option>
+              {vendors.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             type="submit"
+            disabled={!canAddManual}
             style={{
               padding: "0.5rem 1rem",
               background: "#1a1a1a",
               color: "#fff",
               borderRadius: 6,
               fontWeight: 500,
+              cursor: canAddManual ? "pointer" : "not-allowed",
+              opacity: canAddManual ? 1 : 0.5,
             }}
           >
             Add

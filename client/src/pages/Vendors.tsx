@@ -15,6 +15,39 @@ import {
   parseDateInput,
 } from "../utils/format";
 import { PencilIcon, TrashIcon } from "lucide-react";
+import {
+  ScrollableSortableTable,
+  type TableColumn,
+} from "../components/ScrollableSortableTable";
+
+type ActivityRow = {
+  id: string;
+  date: string;
+  description: string;
+  paidAmount: number;
+  expenseAmount: number;
+  projectName: string | null;
+  inventoryName: string | null;
+  inventoryExpenseId: string | null;
+  type: "expense" | "payment";
+  itemId?: string;
+  paymentId?: string;
+  paymentMethodId?: string | null;
+  paymentMethodName?: string | null;
+};
+
+const VENDOR_ACTIVITY_COLUMNS: TableColumn[] = [
+  { header: "Date" },
+  { header: "Project Name" },
+  { header: "Paid Amount", headerStyle: { textAlign: "right" } },
+  { header: "Expense Amount", headerStyle: { textAlign: "right" } },
+  { header: "Payment mode" },
+  { header: "Description" },
+  { header: "", headerStyle: { width: 80 } },
+];
+
+const sortActivityByDateAsc = (a: ActivityRow, b: ActivityRow) =>
+  new Date(a.date).getTime() - new Date(b.date).getTime();
 
 export function VendorList() {
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -359,7 +392,13 @@ export function VendorDetail() {
   };
 
   const startEdit = (row: ActivityRow) => {
-    if (row.type !== "expense" || !row.itemId || row.projectName) return;
+    if (
+      row.type !== "expense" ||
+      !row.itemId ||
+      row.projectName ||
+      row.inventoryExpenseId
+    )
+      return;
     setEditingItemId(row.itemId);
     setEditDesc(row.description);
     setEditAmount(String(row.expenseAmount));
@@ -435,19 +474,6 @@ export function VendorDetail() {
 
   const totalPaid = vendor.vendorPayments.reduce((s, i) => s + i.amount, 0);
 
-  type ActivityRow = {
-    id: string;
-    date: string;
-    description: string;
-    paidAmount: number;
-    expenseAmount: number;
-    projectName: string | null;
-    type: "expense" | "payment";
-    itemId?: string;
-    paymentId?: string;
-    paymentMethodId?: string | null;
-    paymentMethodName?: string | null;
-  };
   const activityRows: ActivityRow[] = [
     ...vendor.vendorItems.map(
       (item): ActivityRow => ({
@@ -457,6 +483,9 @@ export function VendorDetail() {
         paidAmount: 0,
         expenseAmount: item.amount,
         projectName: item.lineItem?.project?.name ?? null,
+        inventoryName:
+          item.inventoryExpense?.inventoryExpenseType?.name ?? null,
+        inventoryExpenseId: item.inventoryExpenseId ?? null,
         type: "expense",
         itemId: item.id,
       }),
@@ -469,13 +498,15 @@ export function VendorDetail() {
         paidAmount: p.amount,
         expenseAmount: 0,
         projectName: null,
+        inventoryName: null,
+        inventoryExpenseId: null,
         type: "payment",
         paymentId: p.id,
         paymentMethodId: p.paymentMethodId ?? null,
         paymentMethodName: p.paymentMethod?.name ?? null,
       }),
     ),
-  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  ];
 
   const projectSearchLower = projectNameSearch.trim().toLowerCase();
   const paidMinNum = paidMin === "" ? null : parseFloat(paidMin);
@@ -512,7 +543,8 @@ export function VendorDetail() {
       return false;
     if (
       projectSearchLower &&
-      !(row.projectName ?? "").toLowerCase().includes(projectSearchLower)
+      !(row.projectName ?? "").toLowerCase().includes(projectSearchLower) &&
+      !(row.inventoryName ?? "").toLowerCase().includes(projectSearchLower)
     )
       return false;
     if (paymentModeFilter && (row.paymentMethodId ?? "") !== paymentModeFilter)
@@ -1014,79 +1046,36 @@ export function VendorDetail() {
         </div>
       )}
 
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 8,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-          overflow: "hidden",
-          width: "100%",
+      <ScrollableSortableTable
+        items={filteredActivityRows}
+        sortCompare={sortActivityByDateAsc}
+        columns={VENDOR_ACTIVITY_COLUMNS}
+        scrollDeps={[id]}
+        emptyMessage={
+          activityRows.length === 0
+            ? "No expenses or payments yet."
+            : "No activity matches your filters."
+        }
+        emptyInTable={activityRows.length > 0}
+        containerStyle={{
           flex: "1",
           maxHeight: "calc(100% - 400px)",
-          overflowY: "auto",
+          width: "100%",
         }}
-      >
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: "0.8125rem",
-          }}
-        >
-          <thead>
-            <tr
-              style={{
-                background: "#f8f8f8",
-                textAlign: "left",
-                position: "sticky",
-                top: 0,
-                zIndex: 1,
-                boxShadow: "0 1px 0 0 #eee",
-              }}
-            >
-              <th style={{ padding: "0.4rem 0.75rem" }}>Date</th>
-              <th style={{ padding: "0.4rem 0.75rem" }}>Project Name</th>
+        renderRow={(row) => {
+          const isManualExpense =
+            row.type === "expense" &&
+            row.itemId &&
+            !row.projectName &&
+            !row.inventoryExpenseId;
+          const isEditing =
+            row.type === "expense" && row.itemId === editingItemId;
+          const isEditingPayment =
+            row.type === "payment" && row.paymentId === editingPaymentId;
 
-              <th style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
-                Paid Amount
-              </th>
-              <th style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
-                Expense Amount
-              </th>
-              <th style={{ padding: "0.4rem 0.75rem" }}>Payment mode</th>
-              <th style={{ padding: "0.4rem 0.75rem" }}>Description</th>
-
-              <th style={{ padding: "0.4rem 0.75rem", width: 80 }} />
-            </tr>
-          </thead>
-          <tbody>
-            {filteredActivityRows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={7}
-                  style={{
-                    padding: "1.25rem 0.75rem",
-                    textAlign: "center",
-                    color: "#666",
-                  }}
-                >
-                  {activityRows.length === 0
-                    ? "No expenses or payments yet."
-                    : "No activity matches your filters."}
-                </td>
-              </tr>
-            ) : (
-              filteredActivityRows.map((row) => {
-                const isManualExpense =
-                  row.type === "expense" && row.itemId && !row.projectName;
-                const isEditing =
-                  row.type === "expense" && row.itemId === editingItemId;
-                const isEditingPayment =
-                  row.type === "payment" && row.paymentId === editingPaymentId;
-
-                if (isEditing) {
-                  return (
-                    <tr key={row.id} style={{ borderTop: "1px solid #eee" }}>
+          if (isEditing) {
+            return (
+              <tr key={row.id} style={{ borderTop: "1px solid #eee" }}>
                       <td style={{ padding: "0.4rem 0.75rem" }}>
                         <input
                           type="text"
@@ -1297,7 +1286,10 @@ export function VendorDetail() {
                       {formatDate(row.date)}
                     </td>
                     <td style={{ padding: "0.4rem 0.75rem", color: "#666" }}>
-                      {row.projectName ?? "—"}
+                      {row.projectName ??
+                        (row.inventoryName
+                          ? `Inventory: ${row.inventoryName}`
+                          : "—")}
                     </td>
                     <td
                       style={{
@@ -1383,11 +1375,8 @@ export function VendorDetail() {
                     </td>
                   </tr>
                 );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+        }}
+      />
 
       <div
         style={{

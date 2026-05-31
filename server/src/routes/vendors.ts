@@ -44,7 +44,14 @@ vendorsRouter.get("/:id", async (req, res) => {
     const vendor = await prisma.vendor.findUnique({
       where: { id: req.params.id },
       include: {
-        vendorItems: { include: { lineItem: { include: { project: { select: { name: true } } } } } },
+        vendorItems: {
+          include: {
+            lineItem: { include: { project: { select: { name: true } } } },
+            inventoryExpense: {
+              include: { inventoryExpenseType: { select: { name: true } } },
+            },
+          },
+        },
         vendorPayments: {
           include: {
             paymentMethod: { select: { id: true, name: true, type: true } },
@@ -134,6 +141,9 @@ vendorsRouter.patch("/:vendorId/items/:itemId", async (req, res) => {
     if (existing.lineItemId != null) {
       return res.status(400).json({ error: "Cannot edit item linked to a project" });
     }
+    if (existing.inventoryExpenseId != null) {
+      return res.status(400).json({ error: "Cannot edit item linked to an inventory purchase" });
+    }
     const item = await prisma.vendorItem.update({
       where: { id: req.params.itemId },
       data: {
@@ -158,6 +168,9 @@ vendorsRouter.delete("/:vendorId/items/:itemId", async (req, res) => {
     if (!existing) return res.status(404).json({ error: "Vendor item not found" });
     if (existing.lineItemId != null) {
       return res.status(400).json({ error: "Cannot delete item linked to a project" });
+    }
+    if (existing.inventoryExpenseId != null) {
+      return res.status(400).json({ error: "Cannot delete item linked to an inventory purchase" });
     }
     await prisma.vendorItem.delete({
       where: { id: req.params.itemId },

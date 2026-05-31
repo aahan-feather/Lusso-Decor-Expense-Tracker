@@ -7,10 +7,24 @@ export function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     api.dashboard().then(setData).catch((e) => setError(e.message)).finally(() => setLoading(false));
   }, []);
+
+  async function handleExport() {
+    setExportError(null);
+    setExporting(true);
+    try {
+      await api.exportBackup();
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   if (loading) return <p>Loading dashboard…</p>;
   if (error) return <p style={{ color: "#c00" }}>{error}</p>;
@@ -31,7 +45,38 @@ export function Dashboard() {
 
   return (
     <div>
-      <h1 style={{ marginBottom: "1.5rem", fontSize: "1.75rem", fontWeight: 600 }}>Dashboard</h1>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "1.5rem",
+          gap: "1rem",
+          flexWrap: "wrap",
+        }}
+      >
+        <h1 style={{ fontSize: "1.75rem", fontWeight: 600, margin: 0 }}>Dashboard</h1>
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={exporting}
+          style={{
+            padding: "0.5rem 1rem",
+            background: "#1a1a1a",
+            color: "#f5f5f0",
+            border: "none",
+            borderRadius: 6,
+            fontWeight: 500,
+            cursor: exporting ? "wait" : "pointer",
+            opacity: exporting ? 0.7 : 1,
+          }}
+        >
+          {exporting ? "Exporting…" : "Export backup"}
+        </button>
+      </div>
+      {exportError && (
+        <p style={{ color: "#c00", marginBottom: "1rem" }}>{exportError}</p>
+      )}
 
       <div
         style={{
