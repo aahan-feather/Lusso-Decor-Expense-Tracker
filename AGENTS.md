@@ -11,15 +11,15 @@ When you add, remove, or rename a Prisma model in `server/prisma/schema.prisma`:
 3. **Backup export updates automatically** — no manual table list to edit. Export reads all models from the Prisma schema at runtime via `server/src/lib/backupExport.ts`.
 4. Add or update API routes, client types in `client/src/api.ts`, and any UI that uses the new data.
 5. If you change backup file layout or semantics in a breaking way, bump `BACKUP_FORMAT_VERSION` in `server/src/lib/backupExport.ts`.
-6. When import exists, update import logic to match the new schema and import order.
+6. Update import logic in `server/src/lib/backupImport.ts` to match the new schema and import order.
 
-### Backup export (dashboard)
+### Backup export & import (dashboard)
 
-- **Endpoint:** `GET /api/backup/export`
-- **Implementation:** `server/src/lib/backupExport.ts`
-- **UI:** Export button on `client/src/pages/Dashboard.tsx`
+- **Export:** `GET /api/backup/export` — `server/src/lib/backupExport.ts`
+- **Import:** `POST /api/backup/import` (multipart field `file`) — `server/src/lib/backupImport.ts`
+- **UI:** Export / Import buttons on `client/src/pages/Dashboard.tsx`
 - **Format:** Zip with `manifest.json` plus `data/<model>s.json` per table (raw rows, ISO dates, IDs preserved).
-- **Import order:** Computed from foreign-key relations in the schema.
+- **Import order:** Computed from foreign-key relations in the schema. Import **replaces** all rows (delete all tables, then insert from zip).
 
 New tables appear in backups as soon as the migration is applied and `prisma generate` has run. Column-only changes on existing models require no backup code changes.
 

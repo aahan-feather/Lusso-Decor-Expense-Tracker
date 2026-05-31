@@ -252,6 +252,17 @@ export const api = {
     URL.revokeObjectURL(url);
   },
 
+  importBackup: async (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${BASE}/backup/import`, { method: "POST", body: form });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error((err as { error?: string }).error ?? "Failed to import backup");
+    }
+    return res.json() as Promise<{ importedAt: string; tables: Array<{ model: string; count: number }> }>;
+  },
+
   expensesAndPayments: () => request<ExpensesAndPaymentsProject[]>("/expenses-and-payments"),
 
   projects: {

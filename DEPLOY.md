@@ -31,6 +31,18 @@ SQLite is no longer used; the schema targets PostgreSQL everywhere.
 
 Existing data in `server/prisma/dev.db` is **not** migrated automatically; treat cloud as a fresh database or export/import manually if you need old rows.
 
-## Other hosts (Railway, Fly.io, etc.)
+## Railway
+
+1. Create a **PostgreSQL** service in the same project.
+2. Create a **web service** from this repo (Dockerfile deploy).
+3. On the web service → **Variables**, add:
+   - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`  
+     (use **Add reference** and pick your Postgres service’s `DATABASE_URL`; the exact label depends on your Postgres service name.)
+   - `NODE_ENV` = `production`
+4. Redeploy the web service.
+
+If deploy logs show `127.0.0.1:5432` or `placeholder`, `DATABASE_URL` is not wired to Postgres yet.
+
+## Other hosts (Fly.io, etc.)
 
 Any platform that can run a Docker image and provide a PostgreSQL `DATABASE_URL` works the same way: build with the repo [`Dockerfile`](./Dockerfile), set `DATABASE_URL` and `NODE_ENV=production`, expose the platform’s `PORT`.

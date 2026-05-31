@@ -63,6 +63,6 @@ See **[DEPLOY.md](./DEPLOY.md)** for Render (Docker + managed Postgres) and note
 
 ## Database changes & backups
 
-The dashboard **Export backup** button downloads all database rows as a zip (`GET /api/backup/export`). Export includes every Prisma model automatically.
+The dashboard **Export backup** / **Import backup** buttons download or restore a full-database zip (`GET /api/backup/export`, `POST /api/backup/import`). Export includes every Prisma model automatically. Import replaces all existing data with the zip contents (you will be asked to confirm).
 
 If you change the schema (human or coding agent), follow **[AGENTS.md](./AGENTS.md)** — especially migrate, `npm run db:generate`, and any API/UI updates.

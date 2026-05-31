@@ -12,7 +12,7 @@ export const BACKUP_FORMAT_VERSION = 1;
 type DmmfModel = (typeof Prisma.dmmf.datamodel.models)[number];
 
 /** Derived from Prisma schema — new models are included automatically after `prisma generate`. */
-function modelToDelegate(modelName: string): string {
+export function modelToDelegate(modelName: string): string {
   return modelName.charAt(0).toLowerCase() + modelName.slice(1);
 }
 
@@ -26,8 +26,8 @@ function modelDependencies(model: DmmfModel): string[] {
     .map((field) => field.type);
 }
 
-/** Foreign-key dependency order for future import. */
-function modelsInImportOrder(): DmmfModel[] {
+/** Foreign-key dependency order for import (parents before children). */
+export function modelsInImportOrder(): DmmfModel[] {
   const models = Prisma.dmmf.datamodel.models;
   const byName = new Map(models.map((model) => [model.name, model]));
   const sorted: DmmfModel[] = [];

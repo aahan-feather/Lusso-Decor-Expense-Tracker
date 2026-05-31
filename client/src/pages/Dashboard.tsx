@@ -1,28 +1,80 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type DashboardData } from "../api";
 import { formatDate, formatMoney } from "../utils/format";
+
+const backupButtonStyle = {
+  padding: "0.5rem 1rem",
+  background: "#1a1a1a",
+  color: "#f5f5f0",
+  border: "none",
+  borderRadius: 6,
+  fontWeight: 500,
+  cursor: "pointer",
+} as const;
 
 export function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [backupError, setBackupError] = useState<string | null>(null);
+  const [backupMessage, setBackupMessage] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  function loadDashboard() {
+    setLoading(true);
+    setError(null);
+    api
+      .dashboard()
+      .then(setData)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }
 
   useEffect(() => {
-    api.dashboard().then(setData).catch((e) => setError(e.message)).finally(() => setLoading(false));
+    loadDashboard();
   }, []);
 
   async function handleExport() {
-    setExportError(null);
+    setBackupError(null);
+    setBackupMessage(null);
     setExporting(true);
     try {
       await api.exportBackup();
     } catch (e) {
-      setExportError(e instanceof Error ? e.message : "Export failed");
+      setBackupError(e instanceof Error ? e.message : "Export failed");
     } finally {
       setExporting(false);
+    }
+  }
+
+  function handleImportClick() {
+    setBackupError(null);
+    setBackupMessage(null);
+    importInputRef.current?.click();
+  }
+
+  async function handleImportFile(file: File) {
+    const confirmed = window.confirm(
+      "Importing a backup will permanently delete all current data in the database and replace it with the contents of this zip file. Continue?",
+    );
+    if (!confirmed) return;
+
+    setBackupError(null);
+    setBackupMessage(null);
+    setImporting(true);
+    try {
+      const result = await api.importBackup(file);
+      const totalRows = result.tables.reduce((sum, t) => sum + t.count, 0);
+      setBackupMessage(`Backup restored (${totalRows} rows across ${result.tables.length} tables).`);
+      loadDashboard();
+    } catch (e) {
+      setBackupError(e instanceof Error ? e.message : "Import failed");
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
     }
   }
 
@@ -56,26 +108,51 @@ export function Dashboard() {
         }}
       >
         <h1 style={{ fontSize: "1.75rem", fontWeight: 600, margin: 0 }}>Dashboard</h1>
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={exporting}
-          style={{
-            padding: "0.5rem 1rem",
-            background: "#1a1a1a",
-            color: "#f5f5f0",
-            border: "none",
-            borderRadius: 6,
-            fontWeight: 500,
-            cursor: exporting ? "wait" : "pointer",
-            opacity: exporting ? 0.7 : 1,
-          }}
-        >
-          {exporting ? "Exporting…" : "Export backup"}
-        </button>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exporting || importing}
+            style={{
+              ...backupButtonStyle,
+              cursor: exporting || importing ? "wait" : "pointer",
+              opacity: exporting || importing ? 0.7 : 1,
+            }}
+          >
+            {exporting ? "Exporting…" : "Export backup"}
+          </button>
+          <button
+            type="button"
+            onClick={handleImportClick}
+            disabled={exporting || importing}
+            style={{
+              ...backupButtonStyle,
+              background: "#fff",
+              color: "#1a1a1a",
+              border: "1px solid #ccc",
+              cursor: exporting || importing ? "wait" : "pointer",
+              opacity: exporting || importing ? 0.7 : 1,
+            }}
+          >
+            {importing ? "Importing…" : "Import backup"}
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".zip,application/zip"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleImportFile(file);
+            }}
+          />
+        </div>
       </div>
-      {exportError && (
-        <p style={{ color: "#c00", marginBottom: "1rem" }}>{exportError}</p>
+      {backupError && (
+        <p style={{ color: "#c00", marginBottom: "1rem" }}>{backupError}</p>
+      )}
+      {backupMessage && (
+        <p style={{ color: "#060", marginBottom: "1rem" }}>{backupMessage}</p>
       )}
 
       <div
