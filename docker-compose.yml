@@ -4,11 +4,11 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: papa
-      POSTGRES_PASSWORD: papa
-      POSTGRES_DB: papa
+      POSTGRES_USER: lusso
+      POSTGRES_PASSWORD: lusso
+      POSTGRES_DB: lusso
     volumes:
-      - papa_pg:/var/lib/postgresql/data
+      - lusso_pg:/var/lib/postgresql/data
 
 volumes:
-  papa_pg:
+  lusso_pg:

@@ -1,4 +1,4 @@
-# Papa Expense Tracker
+# Lusso Accounts Tracker
 
 Internal expense and project tracker: React + Vite front end, Express API, Prisma + PostgreSQL.
 
