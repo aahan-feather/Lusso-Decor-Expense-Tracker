@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   api,
@@ -41,10 +41,20 @@ const VENDOR_ACTIVITY_COLUMNS: TableColumn[] = [
   { header: "Project Name" },
   { header: "Paid Amount", headerStyle: { textAlign: "right" } },
   { header: "Expense Amount", headerStyle: { textAlign: "right" } },
+  {
+    header: "Balance",
+    headerStyle: { textAlign: "right", paddingLeft: "3rem" },
+  },
   { header: "Payment mode" },
   { header: "Description" },
   { header: "", headerStyle: { width: 80 } },
 ];
+
+const VENDOR_BALANCE_CELL_STYLE: CSSProperties = {
+  padding: "0.4rem 0.75rem",
+  paddingLeft: "3rem",
+  textAlign: "right",
+};
 
 const sortActivityByDateAsc = (a: ActivityRow, b: ActivityRow) =>
   new Date(a.date).getTime() - new Date(b.date).getTime();
@@ -552,6 +562,17 @@ export function VendorDetail() {
     return true;
   });
 
+  const balanceMap = new Map<string, number>();
+  {
+    let running = 0;
+    const chronological = [...filteredActivityRows].sort(sortActivityByDateAsc);
+    for (const row of chronological) {
+      if (row.type === "expense") running += row.expenseAmount;
+      else running -= row.paidAmount;
+      balanceMap.set(row.id, running);
+    }
+  }
+
   const hasActiveFilters =
     dateFrom ||
     dateTo ||
@@ -582,11 +603,11 @@ export function VendorDetail() {
         >
           <h1>{vendor.name}</h1>
 
-          <div style={{ display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", flexDirection: "row", gap: "40px" }}>
             <div
               style={{
                 display: "flex",
-                gap: "0.5rem",
+                gap: "5px",
                 justifyContent: "space-between",
               }}
             >
@@ -1057,11 +1078,6 @@ export function VendorDetail() {
             : "No activity matches your filters."
         }
         emptyInTable={activityRows.length > 0}
-        containerStyle={{
-          flex: "1",
-          maxHeight: "calc(100% - 400px)",
-          width: "100%",
-        }}
         renderRow={(row) => {
           const isManualExpense =
             row.type === "expense" &&
@@ -1121,6 +1137,9 @@ export function VendorDetail() {
                             width: 90,
                           }}
                         />
+                      </td>
+                      <td style={VENDOR_BALANCE_CELL_STYLE}>
+                        {formatMoney(balanceMap.get(row.id) ?? 0)}
                       </td>
 
                       <td style={{ padding: "0.4rem 0.75rem", color: "#666" }}>
@@ -1216,6 +1235,9 @@ export function VendorDetail() {
                       >
                         —
                       </td>
+                      <td style={VENDOR_BALANCE_CELL_STYLE}>
+                        {formatMoney(balanceMap.get(row.id) ?? 0)}
+                      </td>
 
                       <td style={{ padding: "0.4rem 0.75rem" }}>
                         <select
@@ -1308,6 +1330,9 @@ export function VendorDetail() {
                       {row.expenseAmount !== 0
                         ? formatMoney(row.expenseAmount)
                         : "—"}
+                    </td>
+                    <td style={VENDOR_BALANCE_CELL_STYLE}>
+                      {formatMoney(balanceMap.get(row.id) ?? 0)}
                     </td>
 
                     <td

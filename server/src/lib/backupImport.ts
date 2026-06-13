@@ -1,5 +1,5 @@
 import AdmZip from "adm-zip";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import {
   BACKUP_FORMAT,
   BACKUP_FORMAT_VERSION,
@@ -7,6 +7,8 @@ import {
   modelsInImportOrder,
 } from "./backupExport.js";
 import { prisma } from "./prisma.js";
+
+type DmmfModel = (typeof Prisma.dmmf.datamodel.models)[number];
 
 type Manifest = {
   format: string;
@@ -75,6 +77,27 @@ async function deleteAllModels(tx: Prisma.TransactionClient): Promise<void> {
   }
 }
 
+function scalarFields(model: DmmfModel): Set<string> {
+  return new Set(
+    model.fields.filter((field) => field.kind === "scalar" || field.kind === "enum").map((f) => f.name),
+  );
+}
+
+/** Drop unknown keys so older/newer backups stay compatible with the current schema. */
+export function normalizeRowsForModel(modelName: string, rows: unknown[]): unknown[] {
+  const model = Prisma.dmmf.datamodel.models.find((m) => m.name === modelName);
+  if (!model) return rows;
+  const allowed = scalarFields(model);
+  return rows.map((row) => {
+    if (typeof row !== "object" || row === null || Array.isArray(row)) return row;
+    const normalized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(row)) {
+      if (allowed.has(key)) normalized[key] = value;
+    }
+    return normalized;
+  });
+}
+
 async function insertModelRows(
   tx: Prisma.TransactionClient,
   modelName: string,
@@ -85,7 +108,7 @@ async function insertModelRows(
   if (!delegate?.createMany) {
     throw new Error(`Backup import: no Prisma delegate for model "${modelName}"`);
   }
-  const result = await delegate.createMany({ data: rows });
+  const result = await delegate.createMany({ data: normalizeRowsForModel(modelName, rows) });
   return result.count;
 }
 
@@ -93,8 +116,19 @@ export async function importBackupFromZip(buffer: Buffer): Promise<ImportBackupR
   const zip = new AdmZip(buffer);
   const manifest = parseManifest(zip);
 
-  const knownModels = new Set(modelsInImportOrder().map((m) => m.name));
-  const tables = [...manifest.tables].sort((a, b) => a.importOrder - b.importOrder);
+  const orderedModels = modelsInImportOrder();
+  const knownModels = new Set(orderedModels.map((m) => m.name));
+  const orderIndex = new Map(orderedModels.map((model, index) => [model.name, index]));
+  const tables = [...manifest.tables].sort(
+    (a, b) => (orderIndex.get(a.model) ?? 0) - (orderIndex.get(b.model) ?? 0),
+  );
+
+  const manifestModels = new Set(tables.map((table) => table.model));
+  for (const model of orderedModels) {
+    if (!manifestModels.has(model.name)) {
+      console.warn(`Backup import: manifest omits ${model.name}; table will be empty after import`);
+    }
+  }
 
   const tableData = tables.map((table) => {
     if (!knownModels.has(table.model)) {

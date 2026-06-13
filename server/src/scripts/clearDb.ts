@@ -2,25 +2,20 @@
  * Clears all data from the database (tables remain).
  * Run from server dir: npx tsx src/scripts/clearDb.ts
  */
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { modelsInImportOrder, modelToDelegate } from "../lib/backupExport.js";
+import { prisma } from "../lib/prisma.js";
 
 async function clearDb() {
-  // Delete in order to respect foreign keys (children first)
-  await prisma.vendorPaymentAllocation.deleteMany();
-  await prisma.vendorPayment.deleteMany();
-  await prisma.vendorItem.deleteMany();
-  await prisma.officeExpense.deleteMany();
-  await prisma.officeExpenseType.deleteMany();
-  await prisma.inventoryExpense.deleteMany();
-  await prisma.inventoryExpenseType.deleteMany();
-  await prisma.lineItem.deleteMany();
-  await prisma.projectPayment.deleteMany();
-  await prisma.project.deleteMany();
-  await prisma.vendor.deleteMany();
-  await prisma.bankOnlyTransaction.deleteMany();
-  await prisma.paymentMethod.deleteMany();
+  const ordered = modelsInImportOrder();
+  const client = prisma as unknown as Record<string, { deleteMany: () => Promise<unknown> }>;
+
+  for (let i = ordered.length - 1; i >= 0; i--) {
+    const delegate = client[modelToDelegate(ordered[i].name)];
+    if (!delegate?.deleteMany) {
+      throw new Error(`clearDb: no Prisma delegate for model "${ordered[i].name}"`);
+    }
+    await delegate.deleteMany();
+  }
 
   console.log("All data cleared.");
 }

@@ -34,10 +34,20 @@ const INVENTORY_TABLE_COLUMNS: TableColumn[] = [
   { header: "Inventory item" },
   { header: "Purchased", headerStyle: { textAlign: "right" } },
   { header: "Used", headerStyle: { textAlign: "right" } },
-  { header: "Payment mode" },
+  {
+    header: "Balance",
+    headerStyle: { textAlign: "right", paddingLeft: "3rem" },
+  },
+  { header: "Pmt. Mode" },
   { header: "Description" },
   { header: "", headerStyle: { width: 80 } },
 ];
+
+const INVENTORY_BALANCE_CELL_STYLE: CSSProperties = {
+  padding: "0.4rem 0.75rem",
+  paddingLeft: "3rem",
+  textAlign: "right",
+};
 
 const sortInventoryByDateAsc = (a: InventoryExpense, b: InventoryExpense) =>
   new Date(a.date).getTime() - new Date(b.date).getTime();
@@ -654,6 +664,16 @@ export function InventoryExpenses() {
   const totalPurchasedFiltered = sumPurchased(filtered);
   const totalUsedFiltered = sumUsed(filtered);
 
+  const balanceMap = new Map<string, number>();
+  {
+    let running = 0;
+    const chronological = [...filtered].sort(sortInventoryByDateAsc);
+    for (const row of chronological) {
+      running += row.amount;
+      balanceMap.set(row.id, running);
+    }
+  }
+
   const hasActiveFilters =
     dateFrom ||
     dateTo ||
@@ -675,119 +695,10 @@ export function InventoryExpenses() {
         <p style={{ color: "#c00", marginBottom: "1rem" }}>{error}</p>
       )}
 
-      <div style={{ marginBottom: "1.5rem" }}>
-        <div
-          style={{
-            display: "flex",
-            gap: "0.5rem",
-            alignItems: "center",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-          }}
-        >
-          <h1 style={{ fontSize: "1.75rem", fontWeight: 600, margin: 0 }}>
-            Inventory
-          </h1>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.2rem",
-                alignItems: "flex-end",
-                fontSize: "0.9rem",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  gap: "0.5rem",
-                  justifyContent: "space-between",
-                  minWidth: 220,
-                }}
-              >
-                <span>Purchased (all)</span>
-                <span style={{ fontWeight: 600 }}>
-                  {formatMoney(totalPurchasedAll)}
-                </span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  gap: "0.5rem",
-                  justifyContent: "space-between",
-                  minWidth: 220,
-                }}
-              >
-                <span>Used (all)</span>
-                <span style={{ fontWeight: 600 }}>{formatMoney(totalUsedAll)}</span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  gap: "0.5rem",
-                  justifyContent: "space-between",
-                  minWidth: 220,
-                }}
-              >
-                <span>Net (all)</span>
-                <span style={{ fontWeight: 600 }}>{formatMoney(totalAll)}</span>
-              </div>
-            </div>
-            {hasActiveFilters && (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.2rem",
-                  alignItems: "flex-end",
-                  fontSize: "0.9rem",
-                  color: "#555",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "0.5rem",
-                    justifyContent: "space-between",
-                    minWidth: 220,
-                  }}
-                >
-                  <span>Purchased (filtered)</span>
-                  <span style={{ fontWeight: 600 }}>
-                    {formatMoney(totalPurchasedFiltered)}
-                  </span>
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "0.5rem",
-                    justifyContent: "space-between",
-                    minWidth: 220,
-                  }}
-                >
-                  <span>Used (filtered)</span>
-                  <span style={{ fontWeight: 600 }}>
-                    {formatMoney(totalUsedFiltered)}
-                  </span>
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "0.5rem",
-                    justifyContent: "space-between",
-                    minWidth: 220,
-                  }}
-                >
-                  <span>Net (filtered)</span>
-                  <span style={{ fontWeight: 600 }}>
-                    {formatMoney(totalFiltered)}
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+      <div style={{ marginBottom: ".5rem", marginTop: "-20px" }}>
+        <h1 style={{ fontSize: "1.75rem", fontWeight: 600, margin: 0 }}>
+          Inventory
+        </h1>
       </div>
 
       <div
@@ -796,7 +707,7 @@ export function InventoryExpenses() {
           flexWrap: "wrap",
           gap: "1rem",
           alignItems: "center",
-          marginBottom: "1.5rem",
+          marginBottom: "0rem",
           padding: "1rem",
           background: "#f8f8f8",
           borderRadius: 8,
@@ -900,10 +811,15 @@ export function InventoryExpenses() {
             />
           </div>
         </div>
+        <div style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "10px"
+        }}>
 
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <label
-            style={{ fontSize: "0.85rem", fontWeight: 500, color: "#555" }}
+            style={{ fontSize: "0.85rem", fontWeight: 500, color: "#555",  }}
           >
             Payment mode
           </label>
@@ -961,6 +877,63 @@ export function InventoryExpenses() {
             ))}
           </select>
         </div>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.2rem",
+            alignItems: "flex-end",
+            fontSize: "0.9rem",
+            marginLeft: "auto",
+            alignSelf: "flex-start",
+          }}
+        >
+              <div
+                style={{
+                  display: "flex",
+                  gap: "1rem",
+                  justifyContent: "flex-end",
+                  minWidth: 220,
+                }}
+              >
+                <span>
+                  Purchased {hasActiveFilters ? "(filtered)" : "(all)"}
+                </span>
+                <span style={{ fontWeight: 600, minWidth: 80, textAlign: "right" }}>
+                  {formatMoney(
+                    hasActiveFilters ? totalPurchasedFiltered : totalPurchasedAll,
+                  )}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "1rem",
+                  justifyContent: "flex-end",
+                  minWidth: 220,
+                }}
+              >
+                <span>Used {hasActiveFilters ? "(filtered)" : "(all)"}</span>
+                <span style={{ fontWeight: 600, minWidth: 80, textAlign: "right" }}>
+                  {formatMoney(hasActiveFilters ? totalUsedFiltered : totalUsedAll)}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "1rem",
+                  justifyContent: "flex-end",
+                  minWidth: 220,
+                }}
+              >
+                <span>Net {hasActiveFilters ? "(filtered)" : "(all)"}</span>
+                <span style={{ fontWeight: 600, minWidth: 80, textAlign: "right" }}>
+                  {formatMoney(hasActiveFilters ? totalFiltered : totalAll)}
+                </span>
+              </div>
+            </div>
+
       </div>
 
       {hasActiveFilters && (
@@ -1212,6 +1185,9 @@ export function InventoryExpenses() {
                           }}
                         />
                       </td>
+                      <td style={INVENTORY_BALANCE_CELL_STYLE}>
+                        {formatMoney(balanceMap.get(row.id) ?? 0)}
+                      </td>
                       <td style={{ padding: "0.4rem 0.75rem" }}>
                         <select
                           value={editPaymentType}
@@ -1344,6 +1320,9 @@ export function InventoryExpenses() {
                       {row.amount < 0
                         ? formatMoney(Math.abs(row.amount))
                         : "—"}
+                    </td>
+                    <td style={INVENTORY_BALANCE_CELL_STYLE}>
+                      {formatMoney(balanceMap.get(row.id) ?? 0)}
                     </td>
                     <td style={{ padding: "0.4rem 0.75rem" }}>
                       {row.vendorItem?.vendor?.name ??

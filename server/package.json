@@ -6,7 +6,9 @@
     "dev": "tsx watch src/index.ts",
     "build": "prisma generate && tsc",
     "start": "node dist/index.js",
-    "start:prod": "prisma migrate deploy && node dist/index.js"
+    "start:prod": "prisma migrate deploy && node dist/index.js",
+    "verify:backup": "tsx src/scripts/verifyBackup.ts",
+    "verify:backup:round-trip": "tsx src/scripts/verifyBackup.ts --round-trip"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

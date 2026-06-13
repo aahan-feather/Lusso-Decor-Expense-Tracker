@@ -181,3 +181,73 @@ export async function buildPaymentMethodRegister(
   rows.sort((a, b) => (a.sortAt < b.sortAt ? -1 : a.sortAt > b.sortAt ? 1 : 0));
   return rows;
 }
+
+export async function computeAllPaymentMethodBalances(
+  prisma: PrismaClient,
+): Promise<Map<string, number>> {
+  const balances = new Map<string, number>();
+
+  const add = (id: string | null | undefined, delta: number) => {
+    if (!id) return;
+    balances.set(id, (balances.get(id) ?? 0) + delta);
+  };
+
+  const [
+    projectPayments,
+    vendorPayments,
+    officeExpenses,
+    inventoryExpenses,
+    lineItems,
+    bankOnly,
+  ] = await Promise.all([
+    prisma.projectPayment.groupBy({
+      by: ["paymentMethodId"],
+      _sum: { amount: true },
+      where: { paymentMethodId: { not: null } },
+    }),
+    prisma.vendorPayment.groupBy({
+      by: ["paymentMethodId"],
+      _sum: { amount: true },
+      where: { paymentMethodId: { not: null } },
+    }),
+    prisma.officeExpense.groupBy({
+      by: ["paymentMethodId"],
+      _sum: { amount: true },
+      where: { paymentMethodId: { not: null } },
+    }),
+    prisma.inventoryExpense.groupBy({
+      by: ["paymentMethodId"],
+      _sum: { amount: true },
+      where: { paymentMethodId: { not: null } },
+    }),
+    prisma.lineItem.groupBy({
+      by: ["paymentMethodId"],
+      _sum: { amount: true },
+      where: { paymentMethodId: { not: null } },
+    }),
+    prisma.bankOnlyTransaction.findMany({
+      select: { paymentMethodId: true, amount: true, direction: true },
+    }),
+  ]);
+
+  for (const row of projectPayments) {
+    add(row.paymentMethodId, row._sum.amount ?? 0);
+  }
+  for (const row of vendorPayments) {
+    add(row.paymentMethodId, -(row._sum.amount ?? 0));
+  }
+  for (const row of officeExpenses) {
+    add(row.paymentMethodId, -(row._sum.amount ?? 0));
+  }
+  for (const row of inventoryExpenses) {
+    add(row.paymentMethodId, -(row._sum.amount ?? 0));
+  }
+  for (const row of lineItems) {
+    add(row.paymentMethodId, -(row._sum.amount ?? 0));
+  }
+  for (const row of bankOnly) {
+    add(row.paymentMethodId, row.direction === "in" ? row.amount : -row.amount);
+  }
+
+  return balances;
+}

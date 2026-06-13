@@ -13,8 +13,8 @@ import {
   formatMoney,
   formatAmountInput,
   parseAmountInput,
-  parseDateInput,
 } from "../utils/format";
+import { DatePicker } from "../components/DatePicker";
 
 export function ProjectList() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -295,7 +295,7 @@ export function ProjectDetail() {
   const [projectType, setProjectType] = useState<ProjectType | "">("");
   const [projectStatus, setProjectStatus] = useState<ProjectStatus | "">("");
   const [documentRef, setDocumentRef] = useState("");
-  const [projectDate, setProjectDate] = useState("");
+  const [projectDateISO, setProjectDateISO] = useState("");
   const [projectName, setProjectName] = useState("");
   const [contactPerson1Name, setContactPerson1Name] = useState("");
   const [contactPerson1Phone, setContactPerson1Phone] = useState("");
@@ -328,7 +328,7 @@ export function ProjectDetail() {
       setProjectType(project.type ?? "");
       setProjectStatus(project.status ?? "");
       setDocumentRef(project.documentRef ?? "");
-      setProjectDate(project.date ? formatDate(project.date) : "");
+      setProjectDateISO(project.date ?? "");
       setProjectName(project.name);
       setContactPerson1Name(project.contactPerson1Name ?? "");
       setContactPerson1Phone(project.contactPerson1Phone ?? "");
@@ -384,9 +384,7 @@ export function ProjectDetail() {
   const canDeleteProject =
     !isCreateMode && project && expenses === 0 && received === 0;
 
-  const createDateValid =
-    projectDate.trim().length > 0 &&
-    parseDateInput(projectDate.trim()) !== null;
+  const createDateValid = projectDateISO.length > 0;
   const createFormComplete =
     projectName.trim().length > 0 && createDateValid;
 
@@ -408,9 +406,7 @@ export function ProjectDetail() {
       projectStatus === ProjectStatus.Closed
         ? projectStatus
         : null;
-    const dateISO = projectDate.trim()
-      ? (parseDateInput(projectDate.trim()) ?? undefined)
-      : undefined;
+    const dateISO = projectDateISO || undefined;
     if (isCreateMode && (!projectName.trim() || !dateISO)) return;
     setSaving(true);
     try {
@@ -437,7 +433,7 @@ export function ProjectDetail() {
           status: newStatus ?? undefined,
           documentRef: documentRef.trim() || undefined,
           details: projectDetails.trim() || null,
-          date: dateISO ?? (projectDate.trim() ? undefined : null),
+          date: dateISO ?? (projectDateISO ? undefined : null),
           contactPerson1Name: contactPerson1Name.trim() || undefined,
           contactPerson1Phone: contactPerson1Phone.trim() || undefined,
           contactPerson2Name: contactPerson2Name.trim() || undefined,
@@ -465,18 +461,10 @@ export function ProjectDetail() {
           }}
         >
           <span style={{ fontSize: "0.9rem" }}>Date</span>
-          <input
-            type="text"
-            placeholder="dd/mm/yy"
-            value={projectDate}
-            onChange={(e) => setProjectDate(e.target.value)}
-            style={{
-              padding: "0.35rem 0.5rem",
-              width: "100%",
-              maxWidth: 100,
-              border: "1px solid #ccc",
-              borderRadius: 4,
-            }}
+          <DatePicker
+            id="project-date"
+            value={projectDateISO}
+            onChange={setProjectDateISO}
           />
           <span style={{ fontSize: "0.9rem" }}>Project Name</span>
           <input

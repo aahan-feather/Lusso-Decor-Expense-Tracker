@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type PaymentMethod } from "../api";
+import { formatMoney } from "../utils/format";
 
 const TYPES = [
   { value: "bank", label: "Bank" },
@@ -59,21 +60,6 @@ export function PaymentMethodsPage() {
         type: editType,
       });
       setEditingId(null);
-      load();
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (
-      !confirm(
-        "Delete this payment method? It will be removed from any payments that use it.",
-      )
-    )
-      return;
-    try {
-      await api.paymentMethods.delete(id);
       load();
     } catch (err) {
       setError((err as Error).message);
@@ -196,120 +182,144 @@ export function PaymentMethodsPage() {
             No payment methods yet. Add one above.
           </p>
         ) : (
-          <ul style={{ listStyle: "none" }}>
-            {list.map((pm) => (
-              <li
-                key={pm.id}
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              fontSize: "0.8125rem",
+            }}
+          >
+            <thead>
+              <tr
                 style={{
-                  padding: "0.75rem 1.25rem",
-                  borderBottom: "1px solid #eee",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
+                  background: "#f8f8f8",
+                  textAlign: "left",
                 }}
               >
-                {editingId === pm.id ? (
-                  <form
-                    onSubmit={handleUpdate}
-                    style={{
-                      display: "flex",
-                      gap: "0.75rem",
-                      alignItems: "center",
-                      flex: 1,
-                    }}
-                  >
-                    <input
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      required
-                      style={{
-                        padding: "0.4rem",
-                        width: 200,
-                        border: "1px solid #ccc",
-                        borderRadius: 4,
-                      }}
-                    />
-                    <select
-                      value={editType}
-                      onChange={(e) => setEditType(e.target.value)}
-                      style={{
-                        padding: "0.4rem",
-                        border: "1px solid #ccc",
-                        borderRadius: 4,
-                      }}
-                    >
-                      {TYPES.map((t) => (
-                        <option key={t.value} value={t.value}>
-                          {t.label}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="submit"
-                      style={{
-                        padding: "0.4rem 0.75rem",
-                        background: "#1a1a1a",
-                        color: "#fff",
-                        borderRadius: 4,
-                      }}
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingId(null)}
-                      style={{ padding: "0.4rem 0.75rem", color: "#666" }}
-                    >
-                      Cancel
-                    </button>
-                  </form>
-                ) : (
-                  <>
-                    <span>
-                      <strong>{pm.name}</strong>
-                      <span
+                <th style={{ padding: "0.4rem 0.75rem" }}>Name</th>
+                <th style={{ padding: "0.4rem 0.75rem" }}>Type</th>
+                <th style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
+                  Balance
+                </th>
+                <th style={{ padding: "0.4rem 0.75rem", width: 220 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((pm) => (
+                <tr key={pm.id} style={{ borderTop: "1px solid #eee" }}>
+                  {editingId === pm.id ? (
+                    <td colSpan={4} style={{ padding: "0.75rem 1.25rem" }}>
+                      <form
+                        onSubmit={handleUpdate}
                         style={{
-                          marginLeft: "0.5rem",
+                          display: "flex",
+                          gap: "0.75rem",
+                          alignItems: "center",
+                        }}
+                      >
+                        <input
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          required
+                          style={{
+                            padding: "0.4rem",
+                            width: 200,
+                            border: "1px solid #ccc",
+                            borderRadius: 4,
+                          }}
+                        />
+                        <select
+                          value={editType}
+                          onChange={(e) => setEditType(e.target.value)}
+                          style={{
+                            padding: "0.4rem",
+                            border: "1px solid #ccc",
+                            borderRadius: 4,
+                          }}
+                        >
+                          {TYPES.map((t) => (
+                            <option key={t.value} value={t.value}>
+                              {t.label}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="submit"
+                          style={{
+                            padding: "0.4rem 0.75rem",
+                            background: "#1a1a1a",
+                            color: "#fff",
+                            borderRadius: 4,
+                            border: "none",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingId(null)}
+                          style={{
+                            padding: "0.4rem 0.75rem",
+                            background: "#fff",
+                            color: "#333",
+                            border: "1px solid #ccc",
+                            borderRadius: 4,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </form>
+                    </td>
+                  ) : (
+                    <>
+                      <td style={{ padding: "0.4rem 0.75rem" }}>
+                        <Link
+                          to={`/bank-accounts/${pm.id}`}
+                          style={{ fontWeight: 500 }}
+                        >
+                          {pm.name}
+                        </Link>
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
                           color: "#666",
-                          fontSize: "0.9rem",
                           textTransform: "capitalize",
                         }}
                       >
                         {pm.type}
-                      </span>
-                    </span>
-                    <span style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
-                      <Link
-                        to={`/bank-accounts/${pm.id}`}
+                      </td>
+                      <td
                         style={{
-                          color: "#1a1a1a",
-                          fontSize: "0.9rem",
+                          padding: "0.4rem 0.75rem",
+                          textAlign: "right",
                           fontWeight: 500,
-                          textDecoration: "none",
                         }}
                       >
-                        View register
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => startEdit(pm)}
-                        style={{ color: "#1a1a1a", fontSize: "0.9rem" }}
+                        {formatMoney(pm.balance ?? 0)}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          textAlign: "right",
+                        }}
                       >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(pm.id)}
-                        style={{ color: "#a33", fontSize: "0.9rem" }}
-                      >
-                        Delete
-                      </button>
-                    </span>
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
+                        <button
+                          type="button"
+                          onClick={() => startEdit(pm)}
+                          style={{ color: "#1a1a1a", fontSize: "0.9rem" }}
+                        >
+                          Edit
+                        </button>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
     </div>

@@ -25,7 +25,7 @@ import { PencilIcon, TrashIcon } from "lucide-react";
 const LEDGER_TABLE_COLUMNS: TableColumn[] = [
   { header: "Date" },
   { header: "Amt. Recd.", headerStyle: { textAlign: "right" } },
-  { header: "Name", headerStyle: { padding: "0.4rem 0.75rem 0.4rem 2rem" } },
+  { header: "Description", headerStyle: { padding: "0.4rem 0.75rem 0.4rem 2rem" } },
   { header: "Qty" },
   { header: "Rate" },
   { header: "Amount", headerStyle: { textAlign: "right" } },
@@ -44,7 +44,7 @@ function lineItemModeLabel(item: LineItem) {
     return `Inventory item (${item.inventoryExpenseType.name})`;
   }
   if (item.paymentMethod) return item.paymentMethod.name;
-  if (item.vendor?.name) return `Vendor (${item.vendor.name})`;
+  if (item.vendor?.name || item.vendorId) return "Vendor";
   return "Vendor";
 }
 
@@ -916,7 +916,7 @@ export function AddExpenseForm({
         }}
       />
       <textarea
-        placeholder="Name"
+        placeholder="Description"
         value={name}
         onChange={(e) => setName(e.target.value)}
         required
@@ -1185,7 +1185,7 @@ export function AddPaymentForm({
         }}
       />
       <textarea
-        placeholder="Name / note"
+        placeholder="Description"
         value={name}
         onChange={(e) => setName(e.target.value)}
         required

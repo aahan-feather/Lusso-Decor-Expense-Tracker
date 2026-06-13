@@ -128,6 +128,7 @@ export type PaymentMethod = {
   id: string;
   name: string;
   type: string;
+  balance?: number;
 };
 
 export type RegisterRowSourceType =

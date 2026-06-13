@@ -17,12 +17,17 @@ type RegisterRowWithBalance = {
   balance: number;
 };
 
+const DESCRIPTION_COL_STYLE: React.CSSProperties = {
+  width: 450,
+  maxWidth: 450,
+};
+
 const BANK_REGISTER_COLUMNS: TableColumn[] = [
   { header: "Date" },
   { header: "Type", headerStyle: { minWidth: 140 } },
-  { header: "Description" },
-  { header: "In", headerStyle: { textAlign: "right", whiteSpace: "nowrap" } },
-  { header: "Out", headerStyle: { textAlign: "right", whiteSpace: "nowrap" } },
+  { header: "Description", headerStyle: DESCRIPTION_COL_STYLE },
+  { header: "In", headerStyle: { textAlign: "right", whiteSpace: "nowrap",  minWidth: 140  },  },
+  { header: "Out", headerStyle: { textAlign: "right", whiteSpace: "nowrap",  minWidth: 140  } },
   {
     header: "Balance",
     headerStyle: { textAlign: "right", whiteSpace: "nowrap" },
@@ -101,7 +106,6 @@ export function BankAccountRegister() {
   const [newAmount, setNewAmount] = useState("");
   const [newDirection, setNewDirection] = useState<"in" | "out">("out");
   const [newDescription, setNewDescription] = useState("");
-  const [newCategory, setNewCategory] = useState("");
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDate, setEditDate] = useState("");
@@ -170,11 +174,10 @@ export function BankAccountRegister() {
         direction: newDirection,
         description: newDescription.trim(),
         date: newDate,
-        category: newCategory || null,
+        category: null,
       });
       setNewAmount("");
       setNewDescription("");
-      setNewCategory("");
       setNewDate(todayISO());
       setNewDirection("out");
       await load();
@@ -291,6 +294,14 @@ export function BankAccountRegister() {
       balance: balanceByRowKey.get(rowKey(row)) ?? 0,
     }));
 
+  const newAmountNum = parseFloat(newAmount.replace(/,/g, ""));
+  const canAddBankOnlyEntry =
+    newDate.trim() !== "" &&
+    newDescription.trim() !== "" &&
+    newAmount.trim() !== "" &&
+    Number.isFinite(newAmountNum) &&
+    newAmountNum > 0;
+
   const tableInput: React.CSSProperties = {
     padding: "0.4rem",
     border: "1px solid #ccc",
@@ -313,8 +324,8 @@ export function BankAccountRegister() {
           display: "flex",
           alignItems: "center",
           gap: "1rem",
-          marginBottom: "1rem",
           flexWrap: "wrap",
+          marginTop: "-20px"
         }}
       >
         <button
@@ -356,7 +367,6 @@ export function BankAccountRegister() {
           flexWrap: "wrap",
           gap: "1rem",
           alignItems: "center",
-          marginBottom: hasActiveFilters ? "0.5rem" : "1.5rem",
           padding: "1rem",
           background: "#f8f8f8",
           borderRadius: 8,
@@ -558,6 +568,7 @@ export function BankAccountRegister() {
         items={rowsWithBalance}
         sortCompare={sortRegisterRowsBySortAtAsc}
         columns={BANK_REGISTER_COLUMNS}
+        tableStyle={{ tableLayout: "fixed" }}
         scrollDeps={[id, loading]}
         emptyMessage={
           rows.length === 0
@@ -611,7 +622,7 @@ export function BankAccountRegister() {
                           ...tableInput,
                           display: "block",
                           marginTop: 4,
-                          width: 90,
+                          width: 120,
                         }}
                       />
                     </label>
@@ -714,12 +725,24 @@ export function BankAccountRegister() {
               <td style={{ ...cellPad, color: "#444" }}>
                 {sourceTypeLabel(row.sourceType)}
               </td>
-              <td style={{ ...cellPad, wordBreak: "break-word" }}>{row.label}</td>
-              <td style={{ ...cellPad, textAlign: "right", whiteSpace: "nowrap" }}>
-                {row.direction === "in" ? formatMoney(row.amount) : "—"}
+              <td
+                style={{
+                  ...cellPad,
+                  ...DESCRIPTION_COL_STYLE,
+                  wordBreak: "break-word",
+                }}
+              >
+                {row.label}
               </td>
               <td style={{ ...cellPad, textAlign: "right", whiteSpace: "nowrap" }}>
-                {row.direction === "out" ? formatMoney(row.amount) : "—"}
+                {row.direction === "in"
+                  ? formatMoney(row.amount, "if-present")
+                  : "—"}
+              </td>
+              <td style={{ ...cellPad, textAlign: "right", whiteSpace: "nowrap" }}>
+                {row.direction === "out"
+                  ? formatMoney(row.amount, "if-present")
+                  : "—"}
               </td>
               <td
                 style={{
@@ -729,7 +752,7 @@ export function BankAccountRegister() {
                   whiteSpace: "nowrap",
                 }}
               >
-                {formatMoney(balance)}
+                {formatMoney(balance, true)}
               </td>
               <td style={cellPad}>
                 {row.sourceType === "bank_only" ? (
@@ -798,6 +821,13 @@ export function BankAccountRegister() {
             title="Date"
             style={{ ...tableInput, width: "auto" }}
           />
+            <input
+            value={newDescription}
+            onChange={(e) => setNewDescription(e.target.value)}
+            required
+            placeholder="Description (e.g. bank fee)"
+            style={{ ...tableInput, minWidth: 180, flex: "1 1 200px" }}
+          />
           <input
             type="number"
             min={0.01}
@@ -806,7 +836,7 @@ export function BankAccountRegister() {
             onChange={(e) => setNewAmount(e.target.value)}
             required
             placeholder="Amount"
-            style={{ ...tableInput, width: 90 }}
+            style={{ ...tableInput, width: 200 }}
           />
           <select
             value={newDirection}
@@ -814,38 +844,21 @@ export function BankAccountRegister() {
             style={{ ...tableInput, minWidth: 120 }}
             title="Direction"
           >
-            <option value="out">Out (debit)</option>
-            <option value="in">In (credit)</option>
+            <option value="out">Out (credit)</option>
+            <option value="in">In (debit)</option>
           </select>
-          <input
-            value={newDescription}
-            onChange={(e) => setNewDescription(e.target.value)}
-            required
-            placeholder="Description (e.g. bank fee)"
-            style={{ ...tableInput, minWidth: 180, flex: "1 1 200px" }}
-          />
-          <select
-            value={newCategory}
-            onChange={(e) => setNewCategory(e.target.value)}
-            style={{ ...tableInput, minWidth: 120 }}
-            title="Category"
-          >
-            {BANK_CATEGORIES.map((c) => (
-              <option key={c.value || "none"} value={c.value}>
-                {c.label === "—" ? "Category" : c.label}
-              </option>
-            ))}
-          </select>
+        
           <button
             type="submit"
+            disabled={!canAddBankOnlyEntry}
             style={{
               padding: "0.5rem 1rem",
-              background: "#1a1a1a",
+              background: canAddBankOnlyEntry ? "#1a1a1a" : "#999",
               color: "#f5f5f0",
               borderRadius: 4,
               fontWeight: 500,
               border: "none",
-              cursor: "pointer",
+              cursor: canAddBankOnlyEntry ? "pointer" : "not-allowed",
               fontSize: "0.85rem",
             }}
           >

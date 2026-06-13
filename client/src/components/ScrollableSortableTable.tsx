@@ -18,6 +18,7 @@ export type ScrollableSortableTableProps<T> = {
   /** When true, render emptyMessage as a row inside the table body. */
   emptyInTable?: boolean;
   containerStyle?: React.CSSProperties;
+  tableStyle?: React.CSSProperties;
 };
 
 const defaultContainerStyle: React.CSSProperties = {
@@ -58,6 +59,7 @@ export function ScrollableSortableTable<T>({
   emptyMessage,
   emptyInTable = false,
   containerStyle,
+  tableStyle: tableStyleOverride,
 }: ScrollableSortableTableProps<T>) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const sortedItems = [...items].sort(sortCompare);
@@ -91,7 +93,7 @@ export function ScrollableSortableTable<T>({
       ref={scrollRef}
       style={{ ...defaultContainerStyle, ...containerStyle }}
     >
-      <table style={tableStyle}>
+      <table style={{ ...tableStyle, ...tableStyleOverride }}>
         <thead>
           <tr style={theadRowStyle}>
             {columns.map((col, i) => (

@@ -1,6 +1,9 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
-import { buildPaymentMethodRegister } from "../lib/buildPaymentMethodRegister.js";
+import {
+  buildPaymentMethodRegister,
+  computeAllPaymentMethodBalances,
+} from "../lib/buildPaymentMethodRegister.js";
 
 export const paymentMethodsRouter = Router();
 
@@ -38,8 +41,16 @@ function parseBankOnlyBody(body: unknown): {
 
 paymentMethodsRouter.get("/", async (_req, res) => {
   try {
-    const list = await prisma.paymentMethod.findMany({ orderBy: [{ type: "asc" }, { name: "asc" }] });
-    res.json(list);
+    const [list, balances] = await Promise.all([
+      prisma.paymentMethod.findMany({ orderBy: [{ type: "asc" }, { name: "asc" }] }),
+      computeAllPaymentMethodBalances(prisma),
+    ]);
+    res.json(
+      list.map((pm) => ({
+        ...pm,
+        balance: balances.get(pm.id) ?? 0,
+      })),
+    );
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Failed to list payment methods" });

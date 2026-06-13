@@ -86,10 +86,10 @@ export function Dashboard() {
 
   const cards = [
     { label: "Total projects", value: counts.projects, link: "/projects" },
-    { label: "Total vendors", value: counts.vendors, link: "/vendors" },
     { label: "Total billed (projects)", value: formatMoney(totals.totalBilled) },
     { label: "Total received", value: formatMoney(totals.totalReceived) },
     { label: "Outstanding from projects", value: formatMoney(totals.outstandingFromProjects), highlight: true },
+    { label: "Total vendors", value: counts.vendors, link: "/vendors" },
     { label: "Total vendor bill", value: formatMoney(totals.totalVendorBill) },
     { label: "Total paid to vendors", value: formatMoney(totals.totalPaidToVendors) },
     { label: "Outstanding to vendors", value: formatMoney(totals.outstandingToVendors), highlight: true },
@@ -162,7 +162,7 @@ export function Dashboard() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+          gridTemplateColumns: "repeat(4, 1fr)",
           gap: "1rem",
           marginBottom: "2.5rem",
         }}

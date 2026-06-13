@@ -2,7 +2,7 @@
  * Format a date string (ISO or yyyy-mm-dd) as dd/mm/yy for display.
  */
 export function formatDate(s: string): string {
-  const d = new Date(s);
+  const d = parseISODateLocal(s) ?? new Date(s);
   if (Number.isNaN(d.getTime())) return s;
   const day = String(d.getDate()).padStart(2, "0");
   const month = String(d.getMonth() + 1).padStart(2, "0");
@@ -10,14 +10,162 @@ export function formatDate(s: string): string {
   return `${day}/${month}/${year}`;
 }
 
+export function getUserLocale(): string {
+  if (typeof navigator !== "undefined" && navigator.language) {
+    return navigator.language;
+  }
+  return "en-IN";
+}
+
+export function parseISODateLocal(iso: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
+  if (!match) return null;
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10) - 1;
+  const day = parseInt(match[3], 10);
+  const date = new Date(year, month, day);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+  return date;
+}
+
+export function isoFromLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function localeDatePartOrder(): Array<"day" | "month" | "year"> {
+  const parts = new Intl.DateTimeFormat(getUserLocale(), {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).formatToParts(new Date(2024, 0, 15));
+  return parts
+    .filter(
+      (part): part is Intl.DateTimeFormatPart & { type: "day" | "month" | "year" } =>
+        part.type === "day" || part.type === "month" || part.type === "year",
+    )
+    .map((part) => part.type);
+}
+
+/**
+ * Format yyyy-mm-dd using the browser locale (e.g. dd/mm/yyyy in India).
+ */
+export function formatDateLocale(iso: string): string {
+  const date = parseISODateLocal(iso);
+  if (!date) return iso;
+  return new Intl.DateTimeFormat(getUserLocale(), {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
+/**
+ * Placeholder for locale date inputs (e.g. dd/mm/yyyy).
+ */
+export function dateInputPlaceholder(): string {
+  const parts = new Intl.DateTimeFormat(getUserLocale(), {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).formatToParts(new Date(2024, 11, 31));
+  return parts
+    .map((part) => {
+      if (part.type === "day") return "dd";
+      if (part.type === "month") return "mm";
+      if (part.type === "year") return "yyyy";
+      return part.value;
+    })
+    .join("");
+}
+
+/**
+ * Parse a locale-formatted date string to yyyy-mm-dd. Returns null if invalid.
+ */
+export function parseLocaleDateInput(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split(/[./-]/).map((part) => part.trim());
+  if (parts.length !== 3) return null;
+
+  const order = localeDatePartOrder();
+  const values: Partial<Record<"day" | "month" | "year", number>> = {};
+  order.forEach((type, index) => {
+    values[type] = parseInt(parts[index], 10);
+  });
+
+  const day = values.day;
+  const month = values.month;
+  let year = values.year;
+  if (day == null || month == null || year == null) return null;
+  if (year < 100) year += year >= 50 ? 1900 : 2000;
+
+  const date = new Date(year, month - 1, day);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+  return isoFromLocalDate(date);
+}
+
+export function getWeekStartDay(): number {
+  try {
+    const locale = new Intl.Locale(getUserLocale());
+    const weekInfo = (locale as Intl.Locale & { weekInfo?: { firstDay?: number } })
+      .weekInfo;
+    if (weekInfo?.firstDay != null) return weekInfo.firstDay;
+  } catch {
+    // Intl.Locale weekInfo is not available in every browser.
+  }
+  return getUserLocale().startsWith("en-US") ? 0 : 1;
+}
+
+export function getWeekdayLabels(): string[] {
+  const formatter = new Intl.DateTimeFormat(getUserLocale(), {
+    weekday: "short",
+  });
+  const weekStart = getWeekStartDay();
+  const labels: string[] = [];
+  for (let offset = 0; offset < 7; offset += 1) {
+    const day = (weekStart + offset) % 7;
+    const date = new Date(2024, 0, 7 + day);
+    labels.push(formatter.format(date));
+  }
+  return labels;
+}
+
+export function formatMonthYear(date: Date): string {
+  return new Intl.DateTimeFormat(getUserLocale(), {
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
 /**
  * Format a number as INR with Indian numbering (lakhs/crores). No currency symbol.
  * e.g. 1234567 -> "12,34,567"
  */
-export function formatMoney(n: number): string {
+export function formatMoney(
+  n: number,
+  options: boolean | "if-present" = false,
+): string {
+  const hasCents = Math.round(n * 100) % 100 !== 0;
+  const minimumFractionDigits =
+    options === true ? 2 : options === "if-present" && hasCents ? 2 : 0;
   return new Intl.NumberFormat("en-IN", {
     style: "decimal",
-    minimumFractionDigits: 0,
+    minimumFractionDigits,
     maximumFractionDigits: 2,
   }).format(n);
 }
@@ -90,12 +238,12 @@ export function parseDateInput(s: string): string | null {
  * Today's date as dd/mm/yy for use in date inputs.
  */
 export function todayDisplay(): string {
-  return formatDate(new Date().toISOString().slice(0, 10));
+  return formatDate(todayISO());
 }
 
 /**
- * Today's date as yyyy-mm-dd for API / internal use.
+ * Today's date as yyyy-mm-dd for API / internal use (local timezone).
  */
 export function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return isoFromLocalDate(new Date());
 }

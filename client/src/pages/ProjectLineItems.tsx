@@ -23,10 +23,7 @@ const ALL_PROJECT_STATUSES: ProjectStatus[] = [
   ProjectStatus.Closed,
 ];
 
-const DEFAULT_STATUS_FILTERS: ProjectStatus[] = [
-  ProjectStatus.Running,
-  ProjectStatus.Due,
-];
+const DEFAULT_STATUS_FILTERS: ProjectStatus[] = [];
 
 const PROJECT_TABLE_COLUMNS: TableColumn[] = [
   { header: "Status" },
@@ -454,7 +451,7 @@ export function ProjectLineItems() {
                 cursor: "pointer",
                 color: "#333",
               }}
-              title="Reset status to Running and Due"
+              title="Clear status filter"
             >
               Status:{" "}
               {statusFilters.length > 0

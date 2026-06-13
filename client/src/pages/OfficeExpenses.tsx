@@ -19,15 +19,45 @@ import {
 import {
   formatDate,
   formatMoney,
-  todayDisplay,
   todayISO,
-  parseDateInput,
 } from "../utils/format";
+import { DatePicker } from "../components/DatePicker";
 import { PencilIcon, TrashIcon } from "lucide-react";
+import {
+  ScrollableSortableTable,
+  type TableColumn,
+} from "../components/ScrollableSortableTable";
 
 function dateKey(iso: string): string {
   return iso.slice(0, 10);
 }
+
+type OfficeTableRow =
+  | { kind: "expense"; data: OfficeExpense }
+  | { kind: "payable"; data: OfficeExpenseTypePayable };
+
+const OFFICE_TABLE_COLUMNS: TableColumn[] = [
+  { header: "Date" },
+  { header: "Type" },
+  { header: "Amount payable", headerStyle: { textAlign: "right" } },
+  { header: "Amount paid", headerStyle: { textAlign: "right" } },
+  {
+    header: "Balance",
+    headerStyle: { textAlign: "right", paddingLeft: "3rem" },
+  },
+  { header: "Payment mode" },
+  { header: "Description" },
+  { header: "", headerStyle: { width: 80 } },
+];
+
+const OFFICE_BALANCE_CELL_STYLE: CSSProperties = {
+  padding: "0.4rem 0.75rem",
+  paddingLeft: "3rem",
+  textAlign: "right",
+};
+
+const sortOfficeTableRowByDateAsc = (a: OfficeTableRow, b: OfficeTableRow) =>
+  new Date(a.data.date).getTime() - new Date(b.data.date).getTime();
 
 type OfficeExpenseTypeComboboxProps = {
   types: OfficeExpenseType[];
@@ -44,7 +74,7 @@ function OfficeExpenseTypeCombobox({
   selectedId,
   onSelectedIdChange,
   onRequestCreateNew,
-  placeholder = "Enter expense",
+  placeholder = "Select Expense Type",
   inputStyle,
   minInputWidth = 140,
 }: OfficeExpenseTypeComboboxProps) {
@@ -273,7 +303,7 @@ export function OfficeExpenses() {
 
   const [manualDesc, setManualDesc] = useState("");
   const [manualAmount, setManualAmount] = useState("");
-  const [manualDate, setManualDate] = useState(() => todayDisplay());
+  const [manualDateISO, setManualDateISO] = useState(() => todayISO());
   const [manualPaymentMethodId, setManualPaymentMethodId] = useState("");
   const [manualOfficeExpenseTypeId, setManualOfficeExpenseTypeId] =
     useState("");
@@ -294,17 +324,17 @@ export function OfficeExpenses() {
   const [payableTypeId, setPayableTypeId] = useState("");
   const [payableName, setPayableName] = useState("");
   const [payableAmount, setPayableAmount] = useState("");
-  const [payableDate, setPayableDate] = useState(() => todayDisplay());
+  const [payableDateISO, setPayableDateISO] = useState(() => todayISO());
   const [payableError, setPayableError] = useState<string | null>(null);
   const [editingPayableId, setEditingPayableId] = useState<string | null>(null);
   const [editPayableName, setEditPayableName] = useState("");
   const [editPayableAmount, setEditPayableAmount] = useState("");
-  const [editPayableDate, setEditPayableDate] = useState("");
+  const [editPayableDateISO, setEditPayableDateISO] = useState("");
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDesc, setEditDesc] = useState("");
   const [editAmount, setEditAmount] = useState("");
-  const [editDate, setEditDate] = useState("");
+  const [editDateISO, setEditDateISO] = useState("");
   const [editPaymentMethodId, setEditPaymentMethodId] = useState("");
   const [editOfficeExpenseTypeId, setEditOfficeExpenseTypeId] = useState("");
 
@@ -458,15 +488,14 @@ export function OfficeExpenses() {
     if (!payableTypeId || !payableName.trim() || payableAmount === "") return;
     try {
       setPayableError(null);
-      const parsed = parseDateInput(payableDate);
       await api.officeExpenseTypes.createPayable(payableTypeId, {
         name: payableName.trim(),
         amount: parseFloat(payableAmount),
-        date: parsed ?? undefined,
+        date: payableDateISO || undefined,
       });
       setPayableName("");
       setPayableAmount("");
-      setPayableDate(todayDisplay());
+      setPayableDateISO(todayISO());
       await loadAllPayables();
     } catch (err) {
       setPayableError((err as Error).message);
@@ -477,25 +506,24 @@ export function OfficeExpenses() {
     setEditingPayableId(p.id);
     setEditPayableName(p.name);
     setEditPayableAmount(String(p.amount));
-    setEditPayableDate(formatDate(p.date));
+    setEditPayableDateISO(p.date ?? "");
   };
 
   const cancelEditPayable = () => {
     setEditingPayableId(null);
     setEditPayableName("");
     setEditPayableAmount("");
-    setEditPayableDate("");
+    setEditPayableDateISO("");
   };
 
   const saveEditPayable = async (typeId: string) => {
     if (!editingPayableId) return;
     try {
       setPayableError(null);
-      const parsed = parseDateInput(editPayableDate);
       await api.officeExpenseTypes.updatePayable(typeId, editingPayableId, {
         name: editPayableName.trim(),
         amount: parseFloat(editPayableAmount),
-        date: parsed ?? undefined,
+        date: editPayableDateISO || undefined,
       });
       cancelEditPayable();
       await loadAllPayables();
@@ -566,9 +594,7 @@ export function OfficeExpenses() {
     }
     try {
       setError(null);
-      const dateISO = manualDate
-        ? (parseDateInput(manualDate) ?? todayISO())
-        : todayISO();
+      const dateISO = manualDateISO || todayISO();
       await api.officeExpenses.create({
         description: manualDesc.trim(),
         amount: parseFloat(manualAmount),
@@ -578,7 +604,7 @@ export function OfficeExpenses() {
       });
       setManualDesc("");
       setManualAmount("");
-      setManualDate(todayDisplay());
+      setManualDateISO(todayISO());
       setManualPaymentMethodId("");
       setManualOfficeExpenseTypeId("");
       load();
@@ -603,7 +629,7 @@ export function OfficeExpenses() {
     setEditingId(row.id);
     setEditDesc(row.description);
     setEditAmount(String(row.amount));
-    setEditDate(formatDate(row.date));
+    setEditDateISO(row.date ?? "");
     setEditPaymentMethodId(row.paymentMethodId ?? "");
     setEditOfficeExpenseTypeId(row.officeExpenseTypeId ?? "");
   };
@@ -612,7 +638,7 @@ export function OfficeExpenses() {
     setEditingId(null);
     setEditDesc("");
     setEditAmount("");
-    setEditDate("");
+    setEditDateISO("");
     setEditPaymentMethodId("");
     setEditOfficeExpenseTypeId("");
   };
@@ -626,9 +652,7 @@ export function OfficeExpenses() {
     }
     try {
       setError(null);
-      const dateISO = editDate
-        ? (parseDateInput(editDate) ?? todayISO())
-        : todayISO();
+      const dateISO = editDateISO || todayISO();
       await api.officeExpenses.update(editingId, {
         description: editDesc.trim(),
         amount: parseFloat(editAmount),
@@ -644,6 +668,21 @@ export function OfficeExpenses() {
   };
 
   if (loading && items.length === 0) return <p>Loading…</p>;
+
+  const addExpenseFormComplete =
+    manualDateISO.length > 0 &&
+    manualOfficeExpenseTypeId.trim() !== "" &&
+    manualDesc.trim() !== "" &&
+    manualAmount.trim() !== "" &&
+    !Number.isNaN(parseFloat(manualAmount)) &&
+    manualPaymentMethodId.trim() !== "";
+
+  const addPayableFormComplete =
+    payableDateISO.length > 0 &&
+    payableTypeId !== "" &&
+    payableName.trim() !== "" &&
+    payableAmount.trim() !== "" &&
+    !Number.isNaN(parseFloat(payableAmount));
 
   const totalAll = items.reduce((s, i) => s + i.amount, 0);
 
@@ -688,10 +727,6 @@ export function OfficeExpenses() {
     paymentModeFilter ||
     typeFilterIds.length > 0;
 
-  type TableRow =
-    | { kind: "expense"; data: OfficeExpense }
-    | { kind: "payable"; data: OfficeExpenseTypePayable };
-
   const filteredPayables = allPayables.filter((p) => {
     const dk = dateKey(p.date);
     if (dateFrom && dk < dateFrom) return false;
@@ -702,24 +737,19 @@ export function OfficeExpenses() {
     return true;
   });
 
-  const tableRows: TableRow[] = [
-    ...filtered.map((d): TableRow => ({ kind: "expense", data: d })),
-    ...filteredPayables.map((d): TableRow => ({ kind: "payable", data: d })),
-  ].sort((a, b) => {
-    const da = new Date(a.data.date).getTime();
-    const db = new Date(b.data.date).getTime();
-    return db - da;
-  });
+  const tableRowItems: OfficeTableRow[] = [
+    ...filtered.map((d): OfficeTableRow => ({ kind: "expense", data: d })),
+    ...filteredPayables.map((d): OfficeTableRow => ({ kind: "payable", data: d })),
+  ];
 
-  // Running balance: payable adds, paid subtracts. Computed oldest-first, keyed by row id.
   const balanceMap = new Map<string, number>();
   {
     let running = 0;
-    for (let i = tableRows.length - 1; i >= 0; i--) {
-      const r = tableRows[i];
-      if (r.kind === "payable") running += r.data.amount;
-      else running -= r.data.amount;
-      balanceMap.set(r.data.id, running);
+    const chronological = [...tableRowItems].sort(sortOfficeTableRowByDateAsc);
+    for (const row of chronological) {
+      if (row.kind === "payable") running += row.data.amount;
+      else running -= row.data.amount;
+      balanceMap.set(row.data.id, running);
     }
   }
 
@@ -736,47 +766,39 @@ export function OfficeExpenses() {
         <p style={{ color: "#c00", marginBottom: "1rem" }}>{error}</p>
       )}
 
-      <div style={{ marginBottom: "1.5rem" }}>
+      <div style={{ marginBottom: "0.75rem" }}>
         <div
           style={{
             display: "flex",
-            gap: "0.5rem",
-            alignItems: "center",
+            gap: "1rem",
+            alignItems: "baseline",
             justifyContent: "space-between",
-            flexWrap: "wrap",
+            flexWrap: "nowrap",
           }}
         >
           <h1 style={{ fontSize: "1.75rem", fontWeight: 600, margin: 0 }}>
             Office expenses
           </h1>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <div
-              style={{
-                display: "flex",
-                gap: "0.5rem",
-                justifyContent: "space-between",
-                minWidth: 200,
-              }}
-            >
-              <span>Total (all)</span>
+          <div
+            style={{
+              display: "flex",
+              gap: "1rem",
+              alignItems: "baseline",
+              fontSize: "0.9rem",
+              flexShrink: 0,
+            }}
+          >
+            <span>
+              Total (all){" "}
               <span style={{ fontWeight: 600 }}>{formatMoney(totalAll)}</span>
-            </div>
+            </span>
             {hasActiveFilters && (
-              <div
-                style={{
-                  display: "flex",
-                  gap: "0.5rem",
-                  justifyContent: "space-between",
-                  minWidth: 200,
-                  fontSize: "0.9rem",
-                  color: "#555",
-                }}
-              >
-                <span>Filtered subtotal</span>
+              <span style={{ color: "#555" }}>
+                Filtered{" "}
                 <span style={{ fontWeight: 600 }}>
                   {formatMoney(totalFiltered)}
                 </span>
-              </div>
+              </span>
             )}
           </div>
         </div>
@@ -785,119 +807,101 @@ export function OfficeExpenses() {
       <div
         style={{
           display: "flex",
-          flexWrap: "wrap",
-          gap: "1rem",
+          flexWrap: "nowrap",
+          gap: "0.75rem",
           alignItems: "center",
-          marginBottom: "1.5rem",
-          padding: "1rem",
+          marginBottom: "1rem",
+          padding: "0.6rem 0.75rem",
           background: "#f8f8f8",
           borderRadius: 8,
           border: "1px solid #eee",
+          overflowX: "auto",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            gap: "0.5rem",
-            flexDirection: "column",
-            alignItems: "flex-start",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <label
-              style={{ fontSize: "0.85rem", fontWeight: 500, color: "#555" }}
-            >
-              Date from
-            </label>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              style={{
-                padding: "0.4rem 0.6rem",
-                border: "1px solid #ccc",
-                borderRadius: 4,
-                fontSize: "0.9rem",
-              }}
-            />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <label
-              style={{ fontSize: "0.85rem", fontWeight: 500, color: "#555" }}
-            >
-              Date to
-            </label>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              style={{
-                padding: "0.4rem 0.6rem",
-                border: "1px solid #ccc",
-                borderRadius: 4,
-                fontSize: "0.9rem",
-              }}
-            />
-          </div>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: "0.5rem",
-            flexDirection: "column",
-            alignItems: "flex-start",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <label
-              style={{ fontSize: "0.85rem", fontWeight: 500, color: "#555" }}
-            >
-              Amount min
-            </label>
-            <input
-              type="number"
-              step="1"
-              placeholder="0"
-              value={expenseMin}
-              onChange={(e) => setExpenseMin(e.target.value)}
-              style={{
-                padding: "0.4rem 0.6rem",
-                border: "1px solid #ccc",
-                borderRadius: 4,
-                fontSize: "0.9rem",
-                width: 90,
-              }}
-            />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <label
-              style={{ fontSize: "0.85rem", fontWeight: 500, color: "#555" }}
-            >
-              Amount max
-            </label>
-            <input
-              type="number"
-              step="1"
-              placeholder="—"
-              value={expenseMax}
-              onChange={(e) => setExpenseMax(e.target.value)}
-              style={{
-                padding: "0.4rem 0.6rem",
-                border: "1px solid #ccc",
-                borderRadius: 4,
-                fontSize: "0.9rem",
-                width: 90,
-              }}
-            />
-          </div>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
           <label
             style={{ fontSize: "0.85rem", fontWeight: 500, color: "#555" }}
           >
-            Payment mode
+            Dt. From
+          </label>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            style={{
+              padding: "0.4rem 0.6rem",
+              border: "1px solid #ccc",
+              borderRadius: 4,
+              fontSize: "0.9rem",
+            }}
+          />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+          <label
+            style={{ fontSize: "0.85rem", fontWeight: 500, color: "#555" }}
+          >
+            Dt. To
+          </label>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            style={{
+              padding: "0.4rem 0.6rem",
+              border: "1px solid #ccc",
+              borderRadius: 4,
+              fontSize: "0.9rem",
+            }}
+          />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+          <label
+            style={{ fontSize: "0.85rem", fontWeight: 500, color: "#555" }}
+          >
+            Amt. Min
+          </label>
+          <input
+            type="number"
+            step="1"
+            placeholder="0"
+            value={expenseMin}
+            onChange={(e) => setExpenseMin(e.target.value)}
+            style={{
+              padding: "0.4rem 0.6rem",
+              border: "1px solid #ccc",
+              borderRadius: 4,
+              fontSize: "0.9rem",
+              width: 90,
+            }}
+          />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+          <label
+            style={{ fontSize: "0.85rem", fontWeight: 500, color: "#555" }}
+          >
+            Amt. Max
+          </label>
+          <input
+            type="number"
+            step="1"
+            placeholder="—"
+            value={expenseMax}
+            onChange={(e) => setExpenseMax(e.target.value)}
+            style={{
+              padding: "0.4rem 0.6rem",
+              border: "1px solid #ccc",
+              borderRadius: 4,
+              fontSize: "0.9rem",
+              width: 90,
+            }}
+          />
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+          <label
+            style={{ fontSize: "0.85rem", fontWeight: 500, color: "#555" }}
+          >
+            Pmt. Mode
           </label>
           <select
             value={paymentModeFilter}
@@ -924,6 +928,7 @@ export function OfficeExpenses() {
             display: "flex",
             alignItems: "center",
             gap: "0.5rem",
+            flexShrink: 0,
           }}
         >
           <label
@@ -1212,70 +1217,18 @@ export function OfficeExpenses() {
         </div>
       )}
 
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 8,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-          overflow: "hidden",
-          width: "100%",
-          flex: "1",
-          maxHeight: "calc(100% - 320px)",
-          overflowY: "auto",
-        }}
-      >
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: "0.8125rem",
-          }}
-        >
-          <thead>
-            <tr
-              style={{
-                background: "#f8f8f8",
-                textAlign: "left",
-                position: "sticky",
-                top: 0,
-                zIndex: 1,
-                boxShadow: "0 1px 0 0 #eee",
-              }}
-            >
-              <th style={{ padding: "0.4rem 0.75rem" }}>Date</th>
-              <th style={{ padding: "0.4rem 0.75rem" }}>Type</th>
-              <th style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
-                Amount payable
-              </th>
-              <th style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
-                Amount paid
-              </th>
-              <th style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
-                Balance
-              </th>
-              <th style={{ padding: "0.4rem 0.75rem" }}>Payment mode</th>
-              <th style={{ padding: "0.4rem 0.75rem" }}>Description</th>
-              <th style={{ padding: "0.4rem 0.75rem", width: 80 }} />
-            </tr>
-          </thead>
-          <tbody>
-            {tableRows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={8}
-                  style={{
-                    padding: "1.25rem 0.75rem",
-                    textAlign: "center",
-                    color: "#666",
-                  }}
-                >
-                  {items.length === 0 && allPayables.length === 0
-                    ? "No office expenses yet. Add one below."
-                    : "No entries match your filters."}
-                </td>
-              </tr>
-            ) : (
-              tableRows.map((tableRow) => {
+      <ScrollableSortableTable
+        items={tableRowItems}
+        sortCompare={sortOfficeTableRowByDateAsc}
+        columns={OFFICE_TABLE_COLUMNS}
+        scrollDeps={[loading]}
+        emptyMessage={
+          items.length === 0 && allPayables.length === 0
+            ? "No office expenses yet. Add one below."
+            : "No entries match your filters."
+        }
+        emptyInTable={items.length > 0 || allPayables.length > 0}
+        renderRow={(tableRow) => {
                 if (tableRow.kind === "expense") {
                   const row = tableRow.data;
                   const isEditing = row.id === editingId;
@@ -1283,17 +1236,10 @@ export function OfficeExpenses() {
                     return (
                       <tr key={`e-${row.id}`} style={{ borderTop: "1px solid #eee" }}>
                         <td style={{ padding: "0.4rem 0.75rem" }}>
-                          <input
-                            type="text"
-                            placeholder="dd/mm/yy"
-                            value={editDate}
-                            onChange={(e) => setEditDate(e.target.value)}
-                            style={{
-                              padding: "0.4rem",
-                              border: "1px solid #ccc",
-                              borderRadius: 4,
-                              width: 90,
-                            }}
+                          <DatePicker
+                            value={editDateISO}
+                            onChange={setEditDateISO}
+                            style={{ maxWidth: 180 }}
                           />
                         </td>
                         <td style={{ padding: "0.4rem 0.75rem" }}>
@@ -1357,7 +1303,7 @@ export function OfficeExpenses() {
                             }}
                           />
                         </td>
-                        <td style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
+                        <td style={OFFICE_BALANCE_CELL_STYLE}>
                           {formatMoney(balanceMap.get(row.id) ?? 0)}
                         </td>
                         <td style={{ padding: "0.4rem 0.75rem" }}>
@@ -1371,6 +1317,8 @@ export function OfficeExpenses() {
                               border: "1px solid #ccc",
                               borderRadius: 4,
                               minWidth: 120,
+                              color:
+                                editPaymentMethodId === "" ? "gray" : "inherit",
                             }}
                           >
                             <option value="">Mode of payment</option>
@@ -1439,7 +1387,7 @@ export function OfficeExpenses() {
                       >
                         {formatMoney(row.amount)}
                       </td>
-                      <td style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
+                      <td style={OFFICE_BALANCE_CELL_STYLE}>
                         {formatMoney(balanceMap.get(row.id) ?? 0)}
                       </td>
                       <td style={{ padding: "0.4rem 0.75rem" }}>
@@ -1480,15 +1428,10 @@ export function OfficeExpenses() {
                   return (
                     <tr key={`p-${p.id}`} style={{ borderTop: "1px solid #eee" }}>
                       <td style={{ padding: "0.4rem 0.75rem" }}>
-                        <input
-                          value={editPayableDate}
-                          onChange={(e) => setEditPayableDate(e.target.value)}
-                          style={{
-                            padding: "0.4rem",
-                            border: "1px solid #ccc",
-                            borderRadius: 4,
-                            width: 90,
-                          }}
+                        <DatePicker
+                          value={editPayableDateISO}
+                          onChange={setEditPayableDateISO}
+                          style={{ maxWidth: 180 }}
                         />
                       </td>
                       <td style={{ padding: "0.4rem 0.75rem", color: "#444" }}>
@@ -1509,7 +1452,7 @@ export function OfficeExpenses() {
                         />
                       </td>
                       <td style={{ padding: "0.4rem 0.75rem" }} />
-                      <td style={{ padding: "0.4rem 0.75rem", textAlign: "right" }}>
+                      <td style={OFFICE_BALANCE_CELL_STYLE}>
                         {formatMoney(balanceMap.get(p.id) ?? 0)}
                       </td>
                       <td style={{ padding: "0.4rem 0.75rem" }} />
@@ -1601,40 +1544,54 @@ export function OfficeExpenses() {
                     </td>
                   </tr>
                 );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+        }}
+      />
 
       <div
         style={{
           border: "1px solid #eee",
           borderRadius: 8,
           marginTop: "1.25rem",
-          padding: "1rem",
         }}
       >
         <form
           onSubmit={addItem}
           style={{
             display: "flex",
-            flexWrap: "wrap",
-            gap: "0.75rem",
+            flexWrap: "nowrap",
+            gap: "1rem",
             alignItems: "flex-end",
+            justifyContent: "space-between",
           }}
         >
-          <input
-            type="text"
-            placeholder="dd/mm/yy"
-            value={manualDate}
-            onChange={(e) => setManualDate(e.target.value)}
+          <h2
             style={{
-              padding: "0.5rem",
-              border: "1px solid #ccc",
-              borderRadius: 4,
-              width: 90,
+              margin: 0,
+              fontSize: "1.1rem",
+              fontWeight: 600,
+              flexShrink: 0,
+              whiteSpace: "nowrap",
             }}
+          >
+            Add Expense
+          </h2>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "nowrap",
+              gap: "0.75rem",
+              alignItems: "flex-end",
+              justifyContent: "flex-end",
+              flex: 1,
+              minWidth: 0,
+              overflowX: "auto",
+            }}
+          >
+          <DatePicker
+            id="office-expense-date"
+            value={manualDateISO}
+            onChange={setManualDateISO}
+            style={{ flexShrink: 0 }}
           />
           <div
             style={{
@@ -1705,6 +1662,7 @@ export function OfficeExpenses() {
               border: "1px solid #ccc",
               borderRadius: 4,
               minWidth: 120,
+              color: manualPaymentMethodId === "" ? "gray" : "inherit",
             }}
           >
             <option value="">Mode of payment</option>
@@ -1716,16 +1674,21 @@ export function OfficeExpenses() {
           </select>
           <button
             type="submit"
+            disabled={!addExpenseFormComplete}
             style={{
               padding: "0.5rem 1rem",
-              background: "#1a1a1a",
+              background: addExpenseFormComplete ? "#1a1a1a" : "#999",
               color: "#fff",
               borderRadius: 6,
               fontWeight: 500,
+              flexShrink: 0,
+              border: "none",
+              cursor: addExpenseFormComplete ? "pointer" : "not-allowed",
             }}
           >
             Add
           </button>
+          </div>
         </form>
       </div>
 
@@ -1733,23 +1696,49 @@ export function OfficeExpenses() {
       <div
         style={{
           marginBottom: "1.5rem",
+          marginTop: "1.25rem",
         }}
       >
-        <h2 style={{ margin: "0 0 0.75rem", fontSize: "1.1rem", fontWeight: 600 }}>
-          Accounts payable
-        </h2>
-
-        {/* Add payable row */}
         <form
           onSubmit={addPayable}
           style={{
             display: "flex",
-            flexWrap: "wrap",
-            gap: "0.75rem",
+            flexWrap: "nowrap",
+            gap: "1rem",
             alignItems: "flex-end",
-            marginBottom: "1rem",
+            justifyContent: "space-between",
+            marginBottom: payableError ? "0.75rem" : 0,
           }}
         >
+          <h2
+            style={{
+              margin: 0,
+              fontSize: "1.1rem",
+              fontWeight: 600,
+              flexShrink: 0,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Expense Payable
+          </h2>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "nowrap",
+              gap: "0.75rem",
+              alignItems: "flex-end",
+              justifyContent: "flex-end",
+              flex: 1,
+              minWidth: 0,
+              overflowX: "auto",
+            }}
+          >
+             <DatePicker
+            id="office-payable-date"
+            value={payableDateISO}
+            onChange={setPayableDateISO}
+            style={{ flexShrink: 0 }}
+          />
           <select
             value={payableTypeId}
             onChange={(e) => setPayableTypeId(e.target.value)}
@@ -1758,9 +1747,12 @@ export function OfficeExpenses() {
               border: "1px solid #ccc",
               borderRadius: 4,
               minWidth: 160,
+              flexShrink: 0,
+              color: payableTypeId === "" ? "gray" : "black",
+              width: "230px"
             }}
           >
-            <option value="">Select expense type</option>
+            <option value="">Select Expense Type</option>
             {expenseTypes.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
@@ -1791,37 +1783,31 @@ export function OfficeExpenses() {
               width: 90,
             }}
           />
-          <input
-            type="text"
-            placeholder="dd/mm/yy"
-            value={payableDate}
-            onChange={(e) => setPayableDate(e.target.value)}
-            style={{
-              padding: "0.5rem",
-              border: "1px solid #ccc",
-              borderRadius: 4,
-              width: 90,
-            }}
-          />
+          <div style={{
+            width: "170px"
+          }}></div>
+         
           <button
             type="submit"
-            disabled={!payableTypeId}
+            disabled={!addPayableFormComplete}
             style={{
               padding: "0.5rem 1rem",
-              background: payableTypeId ? "#1a1a1a" : "#999",
+              background: addPayableFormComplete ? "#1a1a1a" : "#999",
               color: "#fff",
               borderRadius: 6,
               fontWeight: 500,
               border: "none",
-              cursor: payableTypeId ? "pointer" : "not-allowed",
+              cursor: addPayableFormComplete ? "pointer" : "not-allowed",
+              flexShrink: 0,
             }}
           >
             Add
           </button>
+          </div>
         </form>
 
         {payableError && (
-          <p style={{ color: "#c00", fontSize: "0.85rem", margin: "0 0 0.75rem" }}>
+          <p style={{ color: "#c00", fontSize: "0.85rem", margin: 0 }}>
             {payableError}
           </p>
         )}
