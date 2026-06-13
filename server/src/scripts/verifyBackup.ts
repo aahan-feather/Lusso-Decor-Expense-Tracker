@@ -6,6 +6,7 @@ import AdmZip from "adm-zip";
 import { Prisma } from "@prisma/client";
 import {
   createBackupArchive,
+  modelToDelegate,
   modelsInImportOrder,
 } from "../lib/backupExport.js";
 import { importBackupFromZip } from "../lib/backupImport.js";
@@ -108,17 +109,21 @@ async function testLegacyBackupImport(): Promise<void> {
   console.log("Legacy backup import: OK");
 }
 
+type CountDelegate = { count: () => Promise<number> };
+
+async function countModelRows(modelName: string): Promise<number> {
+  const delegate = (prisma as unknown as Record<string, CountDelegate>)[modelToDelegate(modelName)];
+  return delegate?.count ? delegate.count() : 0;
+}
+
 async function roundTrip(): Promise<void> {
   console.log("\nRound-trip export → import...");
 
   const before = await Promise.all(
-    modelsInImportOrder().map(async (model) => {
-      const delegate = (prisma as Record<string, { count: () => Promise<number> }>)[
-        model.name.charAt(0).toLowerCase() + model.name.slice(1)
-      ];
-      const count = delegate?.count ? await delegate.count() : 0;
-      return { model: model.name, count };
-    }),
+    modelsInImportOrder().map(async (model) => ({
+      model: model.name,
+      count: await countModelRows(model.name),
+    })),
   );
 
   const zipBuffer = await bufferFromArchive();
@@ -130,13 +135,10 @@ async function roundTrip(): Promise<void> {
   console.log(`Imported at ${result.importedAt}`);
 
   const after = await Promise.all(
-    modelsInImportOrder().map(async (model) => {
-      const delegate = (prisma as Record<string, { count: () => Promise<number> }>)[
-        model.name.charAt(0).toLowerCase() + model.name.slice(1)
-      ];
-      const count = delegate?.count ? await delegate.count() : 0;
-      return { model: model.name, count };
-    }),
+    modelsInImportOrder().map(async (model) => ({
+      model: model.name,
+      count: await countModelRows(model.name),
+    })),
   );
 
   let ok = true;
