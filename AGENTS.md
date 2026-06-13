@@ -17,7 +17,7 @@ When you add, remove, or rename a Prisma model in `server/prisma/schema.prisma`:
 
 - **Export:** `GET /api/backup/export` — `server/src/lib/backupExport.ts`
 - **Import:** `POST /api/backup/import` (multipart field `file`) — `server/src/lib/backupImport.ts`
-- **UI:** Export on dashboard always; Import only in Vite dev (`import.meta.env.DEV`). `POST /api/backup/import` returns 404 when `NODE_ENV=production`.
+- **UI:** Export on dashboard always; Import is hidden in production (`hidden` attribute) but remains in the DOM — remove `hidden` in browser devtools to reveal it. Visible by default in dev.
 - **Format:** Zip with `manifest.json` plus `data/<model>s.json` per table (raw rows, ISO dates, IDs preserved).
 - **Import order:** Computed from foreign-key relations in the schema. Import **replaces** all rows (delete all tables, then insert from zip).
 

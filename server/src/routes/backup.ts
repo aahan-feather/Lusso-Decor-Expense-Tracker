@@ -35,10 +35,6 @@ backupRouter.get("/export", async (_req, res) => {
 });
 
 backupRouter.post("/import", upload.single("file"), async (req, res) => {
-  if (process.env.NODE_ENV === "production") {
-    res.status(404).json({ error: "Not found" });
-    return;
-  }
   try {
     if (!req.file?.buffer?.length) {
       res.status(400).json({ error: "No backup file uploaded" });

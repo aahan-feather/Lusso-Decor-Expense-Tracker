@@ -43,7 +43,7 @@ dashboardRouter.get("/", async (_req, res) => {
     });
 
     res.json({
-      backupImportEnabled: process.env.NODE_ENV !== "production",
+      backupImportVisible: process.env.NODE_ENV !== "production",
       counts: {
         projects: projects.length,
         vendors: vendors.length,

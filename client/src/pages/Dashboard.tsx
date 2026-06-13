@@ -82,7 +82,7 @@ export function Dashboard() {
   if (error) return <p style={{ color: "#c00" }}>{error}</p>;
   if (!data) return null;
 
-  const { backupImportEnabled, counts, totals, recent } = data;
+  const { backupImportVisible, counts, totals, recent } = data;
 
   const cards = [
     { label: "Total projects", value: counts.projects, link: "/projects" },
@@ -112,7 +112,7 @@ export function Dashboard() {
           <button
             type="button"
             onClick={handleExport}
-            disabled={exporting || (backupImportEnabled && importing)}
+            disabled={exporting || importing}
             style={{
               ...backupButtonStyle,
               cursor: exporting || importing ? "wait" : "pointer",
@@ -121,35 +121,33 @@ export function Dashboard() {
           >
             {exporting ? "Exporting…" : "Export backup"}
           </button>
-          {backupImportEnabled && (
-            <>
-              <button
-                type="button"
-                onClick={handleImportClick}
-                disabled={exporting || importing}
-                style={{
-                  ...backupButtonStyle,
-                  background: "#fff",
-                  color: "#1a1a1a",
-                  border: "1px solid #ccc",
-                  cursor: exporting || importing ? "wait" : "pointer",
-                  opacity: exporting || importing ? 0.7 : 1,
-                }}
-              >
-                {importing ? "Importing…" : "Import backup"}
-              </button>
-              <input
-                ref={importInputRef}
-                type="file"
-                accept=".zip,application/zip"
-                style={{ display: "none" }}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void handleImportFile(file);
-                }}
-              />
-            </>
-          )}
+          <span hidden={!backupImportVisible} data-backup-import>
+            <button
+              type="button"
+              onClick={handleImportClick}
+              disabled={exporting || importing}
+              style={{
+                ...backupButtonStyle,
+                background: "#fff",
+                color: "#1a1a1a",
+                border: "1px solid #ccc",
+                cursor: exporting || importing ? "wait" : "pointer",
+                opacity: exporting || importing ? 0.7 : 1,
+              }}
+            >
+              {importing ? "Importing…" : "Import backup"}
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".zip,application/zip"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleImportFile(file);
+              }}
+            />
+          </span>
         </div>
       </div>
       {backupError && (
